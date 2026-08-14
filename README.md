@@ -35,6 +35,21 @@ pnpm dev
 Both development servers bind to loopback by default. Copy `apps/api/.env.example` only if you need
 to override the API port; never commit local environment files.
 
+## Clone on macOS
+
+Authenticate the GitHub CLI as an account with access to this private repository, then run:
+
+```sh
+gh repo clone Bbardia/CD3
+cd CD3
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Alternatively, clone over SSH with `git clone git@github.com:Bbardia/CD3.git`. The application stays
+local to the Mac and the development services continue to bind to loopback only.
+
 ## Verify
 
 ```sh
@@ -55,8 +70,7 @@ pnpm generate:schema
 ## Data boundary
 
 Project snapshots will live under ignored runtime directories and use a versioned JSON format. Do
-not commit `.env` files, project data, databases, backups, secrets, or machine-specific paths. This
-repository intentionally has no configured Git remote.
+not commit `.env` files, project data, databases, backups, secrets, or machine-specific paths.
 
 ## License and independence
 
