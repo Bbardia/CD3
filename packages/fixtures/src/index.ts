@@ -1,2 +1,5 @@
-/** Canonical project fixtures are introduced in the fixtures milestone. */
-export {};
+export {
+  generateSyntheticProject,
+  type GenerateSyntheticProjectOptions,
+} from './generate-project.js';
+export { northstarCommerceProject } from './northstar-commerce.js';

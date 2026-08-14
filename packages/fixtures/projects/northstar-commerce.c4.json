@@ -1,0 +1,1206 @@
+{
+  "description": "A fictional omnichannel commerce platform that demonstrates Northstar storefront, ordering, payment, and fulfillment flows.",
+  "elements": {
+    "shopper": {
+      "description": "Browses the fictional catalog, manages a basket, and places orders.",
+      "externalRefs": [],
+      "name": "Shopper",
+      "properties": {
+        "channels": [
+          "web",
+          "mobile-web"
+        ],
+        "segment": "retail",
+        "accessibility": {
+          "assistedCheckout": true
+        }
+      },
+      "tags": [
+        "person",
+        "customer"
+      ],
+      "id": "shopper",
+      "kind": "person"
+    },
+    "merchandising-manager": {
+      "description": "Curates products, promotions, and availability for the fictional storefront.",
+      "externalRefs": [],
+      "name": "Merchandising Manager",
+      "properties": {
+        "responsibilities": [
+          "catalog",
+          "promotions",
+          "availability"
+        ],
+        "accessProfile": "catalog-operator"
+      },
+      "tags": [
+        "person",
+        "operations"
+      ],
+      "id": "merchandising-manager",
+      "kind": "person"
+    },
+    "northstar-commerce": {
+      "description": "Core fictional commerce system for discovery, basket checkout, ordering, and inventory coordination.",
+      "externalRefs": [
+        {
+          "kind": "documentation",
+          "label": "Fictional architecture guide",
+          "url": "https://northstar-commerce.example/architecture/overview"
+        }
+      ],
+      "name": "Northstar Commerce",
+      "properties": {
+        "criticality": "high",
+        "capabilities": [
+          "catalog",
+          "checkout",
+          "orders",
+          "inventory"
+        ],
+        "ownership": {
+          "team": "Northstar Platform",
+          "model": "fictional"
+        }
+      },
+      "tags": [
+        "software-system",
+        "core",
+        "commerce"
+      ],
+      "technology": "TypeScript, Node.js, React, and PostgreSQL",
+      "id": "northstar-commerce",
+      "kind": "softwareSystem"
+    },
+    "constellation-payments": {
+      "description": "Fictional third-party payment network that authorizes and captures card payments.",
+      "externalRefs": [
+        {
+          "kind": "documentation",
+          "label": "Fictional sandbox API",
+          "url": "https://constellation-payments.example/developer/sandbox"
+        }
+      ],
+      "name": "Constellation Payments",
+      "properties": {
+        "serviceLevel": {
+          "availabilityPercent": 99.95,
+          "responseTargetMs": 800
+        },
+        "sandbox": true
+      },
+      "tags": [
+        "software-system",
+        "external",
+        "payments"
+      ],
+      "technology": "External HTTPS API",
+      "id": "constellation-payments",
+      "kind": "softwareSystem"
+    },
+    "waypoint-fulfillment": {
+      "description": "Fictional external fulfillment network that receives allocated orders for dispatch.",
+      "externalRefs": [],
+      "name": "Waypoint Fulfillment",
+      "properties": {
+        "acceptedRegions": [
+          "north",
+          "central",
+          "coastal"
+        ],
+        "deliveryMode": "asynchronous"
+      },
+      "tags": [
+        "software-system",
+        "external",
+        "fulfillment"
+      ],
+      "technology": "External CloudEvents endpoint",
+      "id": "waypoint-fulfillment",
+      "kind": "softwareSystem"
+    },
+    "storefront-web": {
+      "description": "Customer-facing storefront for product discovery, baskets, and checkout.",
+      "externalRefs": [],
+      "name": "Storefront Web App",
+      "properties": {
+        "runtime": "browser",
+        "rendering": [
+          "client",
+          "edge-cache"
+        ]
+      },
+      "tags": [
+        "container",
+        "web",
+        "customer-facing"
+      ],
+      "technology": "React 19 and TypeScript",
+      "id": "storefront-web",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "backoffice-web": {
+      "description": "Operations console for managing catalog entries and scheduled promotions.",
+      "externalRefs": [],
+      "name": "Merchandising Console",
+      "properties": {
+        "runtime": "browser",
+        "authorization": {
+          "role": "catalog-operator",
+          "stepUp": true
+        }
+      },
+      "tags": [
+        "container",
+        "web",
+        "operations"
+      ],
+      "technology": "React 19 and TypeScript",
+      "id": "backoffice-web",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "edge-api": {
+      "description": "Public application API that authenticates requests and routes catalog and order commands.",
+      "externalRefs": [
+        {
+          "kind": "documentation",
+          "label": "Fictional API handbook",
+          "url": "https://northstar-commerce.example/operations/edge-api"
+        }
+      ],
+      "name": "Commerce Edge API",
+      "properties": {
+        "protocol": "HTTPS",
+        "scaling": {
+          "minimumInstances": 2,
+          "maximumInstances": 12
+        }
+      },
+      "tags": [
+        "container",
+        "api",
+        "edge"
+      ],
+      "technology": "Fastify and TypeScript",
+      "id": "edge-api",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "catalog-service": {
+      "description": "Serves searchable product, category, price-list, and availability projections.",
+      "externalRefs": [],
+      "name": "Catalog Service",
+      "properties": {
+        "cacheTtlSeconds": 60,
+        "indexes": [
+          "products",
+          "categories"
+        ]
+      },
+      "tags": [
+        "container",
+        "service",
+        "catalog"
+      ],
+      "technology": "Node.js and TypeScript",
+      "id": "catalog-service",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "order-service": {
+      "description": "Owns checkout orchestration, pricing decisions, payment authorization, and order lifecycle.",
+      "externalRefs": [
+        {
+          "kind": "dashboard",
+          "label": "Fictional checkout dashboard",
+          "url": "https://northstar-commerce.example/observability/checkout"
+        }
+      ],
+      "name": "Order Service",
+      "properties": {
+        "consistency": "transactional-outbox",
+        "objectives": {
+          "p95CheckoutMs": 1200,
+          "recoveryMinutes": 15
+        }
+      },
+      "tags": [
+        "container",
+        "service",
+        "orders"
+      ],
+      "technology": "Fastify and TypeScript",
+      "id": "order-service",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "inventory-worker": {
+      "description": "Consumes order events, reserves stock, and forwards allocated orders to fulfillment.",
+      "externalRefs": [],
+      "name": "Inventory Worker",
+      "properties": {
+        "concurrency": 8,
+        "retryPolicy": {
+          "attempts": 5,
+          "backoff": "exponential"
+        }
+      },
+      "tags": [
+        "container",
+        "worker",
+        "inventory"
+      ],
+      "technology": "Node.js worker",
+      "id": "inventory-worker",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "event-stream": {
+      "description": "Durable internal stream for order and inventory integration events.",
+      "externalRefs": [],
+      "name": "Commerce Event Stream",
+      "properties": {
+        "retentionHours": 168,
+        "subjects": [
+          "orders.placed",
+          "inventory.reserved"
+        ]
+      },
+      "tags": [
+        "container",
+        "messaging",
+        "infrastructure"
+      ],
+      "technology": "NATS JetStream",
+      "id": "event-stream",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "commerce-store": {
+      "description": "Stores catalog records, baskets, orders, and transactional outbox entries.",
+      "externalRefs": [],
+      "name": "Commerce Data Store",
+      "properties": {
+        "encryption": {
+          "atRest": true,
+          "inTransit": true
+        },
+        "backupClass": "fictional-demo"
+      },
+      "tags": [
+        "container",
+        "database",
+        "infrastructure"
+      ],
+      "technology": "PostgreSQL 17",
+      "id": "commerce-store",
+      "kind": "container",
+      "parentId": "northstar-commerce"
+    },
+    "checkout-controller": {
+      "description": "Validates checkout requests and maps HTTP contracts to application commands.",
+      "externalRefs": [],
+      "name": "Checkout HTTP Controller",
+      "properties": {
+        "endpoint": "/v1/checkouts",
+        "idempotencyRequired": true
+      },
+      "tags": [
+        "component",
+        "interface",
+        "checkout"
+      ],
+      "technology": "Fastify route module",
+      "id": "checkout-controller",
+      "kind": "component",
+      "parentId": "order-service"
+    },
+    "order-application": {
+      "description": "Coordinates pricing, payment, persistence, and event publication for an order command.",
+      "externalRefs": [],
+      "name": "Order Application Service",
+      "properties": {
+        "transactionBoundary": true,
+        "command": "PlaceOrder"
+      },
+      "tags": [
+        "component",
+        "application",
+        "orders"
+      ],
+      "technology": "TypeScript application module",
+      "id": "order-application",
+      "kind": "component",
+      "parentId": "order-service"
+    },
+    "pricing-policy": {
+      "description": "Calculates deterministic totals from price lists, promotions, tax, and delivery.",
+      "externalRefs": [],
+      "name": "Pricing Policy",
+      "properties": {
+        "rounding": "half-even",
+        "currencyMode": "minor-units"
+      },
+      "tags": [
+        "component",
+        "domain",
+        "pricing"
+      ],
+      "technology": "TypeScript domain module",
+      "id": "pricing-policy",
+      "kind": "component",
+      "parentId": "order-service"
+    },
+    "payment-adapter": {
+      "description": "Translates internal authorization requests to the fictional Constellation API contract.",
+      "externalRefs": [],
+      "name": "Payment Gateway Adapter",
+      "properties": {
+        "timeoutMs": 1000,
+        "circuitBreaker": {
+          "failureThreshold": 5,
+          "resetSeconds": 30
+        }
+      },
+      "tags": [
+        "component",
+        "adapter",
+        "payments"
+      ],
+      "technology": "TypeScript HTTP adapter",
+      "id": "payment-adapter",
+      "kind": "component",
+      "parentId": "order-service"
+    },
+    "order-repository": {
+      "description": "Persists orders and their outbox events in a single database transaction.",
+      "externalRefs": [],
+      "name": "Order Repository",
+      "properties": {
+        "pattern": "repository",
+        "writes": [
+          "orders",
+          "order_lines",
+          "outbox"
+        ]
+      },
+      "tags": [
+        "component",
+        "persistence",
+        "orders"
+      ],
+      "technology": "TypeScript and SQL",
+      "id": "order-repository",
+      "kind": "component",
+      "parentId": "order-service"
+    }
+  },
+  "id": "northstar-commerce",
+  "name": "Northstar Commerce",
+  "relationships": {
+    "shopper-uses-commerce": {
+      "description": "Uses Northstar Commerce to discover products and place fictional orders.",
+      "externalRefs": [],
+      "id": "shopper-uses-commerce",
+      "interaction": "synchronous",
+      "name": "Browses and buys",
+      "properties": {
+        "direction": "inbound"
+      },
+      "sourceId": "shopper",
+      "tags": [
+        "context",
+        "customer"
+      ],
+      "targetId": "northstar-commerce",
+      "technology": "HTTPS"
+    },
+    "merchandiser-manages-commerce": {
+      "description": "Manages catalog content, prices, and promotions.",
+      "externalRefs": [],
+      "id": "merchandiser-manages-commerce",
+      "interaction": "synchronous",
+      "name": "Curates merchandise",
+      "properties": {
+        "direction": "inbound"
+      },
+      "sourceId": "merchandising-manager",
+      "tags": [
+        "context",
+        "operations"
+      ],
+      "targetId": "northstar-commerce",
+      "technology": "HTTPS"
+    },
+    "commerce-authorizes-payment": {
+      "description": "Requests payment authorization for submitted checkout totals.",
+      "externalRefs": [],
+      "id": "commerce-authorizes-payment",
+      "interaction": "synchronous",
+      "name": "Authorizes payments",
+      "properties": {
+        "timeoutMs": 1000
+      },
+      "sourceId": "northstar-commerce",
+      "tags": [
+        "context",
+        "external",
+        "payments"
+      ],
+      "targetId": "constellation-payments",
+      "technology": "JSON over HTTPS"
+    },
+    "commerce-dispatches-fulfillment": {
+      "description": "Publishes allocated order requests to the external fulfillment network.",
+      "externalRefs": [],
+      "id": "commerce-dispatches-fulfillment",
+      "interaction": "asynchronous",
+      "name": "Dispatches allocated orders",
+      "properties": {
+        "delivery": "at-least-once"
+      },
+      "sourceId": "northstar-commerce",
+      "tags": [
+        "context",
+        "external",
+        "fulfillment"
+      ],
+      "targetId": "waypoint-fulfillment",
+      "technology": "CloudEvents over HTTPS"
+    },
+    "shopper-opens-storefront": {
+      "description": "Loads product pages and submits basket interactions.",
+      "externalRefs": [],
+      "id": "shopper-opens-storefront",
+      "interaction": "synchronous",
+      "name": "Uses storefront",
+      "properties": {
+        "channel": "web"
+      },
+      "sourceId": "shopper",
+      "tags": [
+        "container",
+        "customer"
+      ],
+      "targetId": "storefront-web",
+      "technology": "HTTPS"
+    },
+    "merchandiser-uses-backoffice": {
+      "description": "Edits products and schedules promotions in the operations console.",
+      "externalRefs": [],
+      "id": "merchandiser-uses-backoffice",
+      "interaction": "synchronous",
+      "name": "Uses console",
+      "properties": {
+        "authentication": "step-up"
+      },
+      "sourceId": "merchandising-manager",
+      "tags": [
+        "container",
+        "operations"
+      ],
+      "targetId": "backoffice-web",
+      "technology": "HTTPS"
+    },
+    "storefront-calls-edge": {
+      "description": "Requests catalog data and sends checkout commands.",
+      "externalRefs": [],
+      "id": "storefront-calls-edge",
+      "interaction": "synchronous",
+      "name": "Calls commerce API",
+      "properties": {
+        "audience": "storefront"
+      },
+      "sourceId": "storefront-web",
+      "tags": [
+        "container",
+        "api"
+      ],
+      "targetId": "edge-api",
+      "technology": "JSON over HTTPS"
+    },
+    "backoffice-calls-edge": {
+      "description": "Sends authenticated catalog and promotion commands.",
+      "externalRefs": [],
+      "id": "backoffice-calls-edge",
+      "interaction": "synchronous",
+      "name": "Calls operations API",
+      "properties": {
+        "audience": "operations"
+      },
+      "sourceId": "backoffice-web",
+      "tags": [
+        "container",
+        "api"
+      ],
+      "targetId": "edge-api",
+      "technology": "JSON over HTTPS"
+    },
+    "edge-queries-catalog": {
+      "description": "Fetches product and availability projections for client requests.",
+      "externalRefs": [],
+      "id": "edge-queries-catalog",
+      "interaction": "synchronous",
+      "name": "Queries catalog",
+      "properties": {
+        "cacheable": true
+      },
+      "sourceId": "edge-api",
+      "tags": [
+        "container",
+        "catalog"
+      ],
+      "targetId": "catalog-service",
+      "technology": "Internal HTTP"
+    },
+    "edge-submits-order": {
+      "description": "Passes a validated checkout command to the order boundary.",
+      "externalRefs": [],
+      "id": "edge-submits-order",
+      "interaction": "synchronous",
+      "name": "Submits checkout",
+      "properties": {
+        "idempotent": true
+      },
+      "sourceId": "edge-api",
+      "tags": [
+        "container",
+        "orders"
+      ],
+      "targetId": "order-service",
+      "technology": "Internal HTTP"
+    },
+    "catalog-reads-store": {
+      "description": "Loads catalog records and indexed product projections.",
+      "externalRefs": [],
+      "id": "catalog-reads-store",
+      "interaction": "synchronous",
+      "name": "Reads catalog data",
+      "properties": {
+        "access": "read-mostly"
+      },
+      "sourceId": "catalog-service",
+      "tags": [
+        "container",
+        "database"
+      ],
+      "targetId": "commerce-store",
+      "technology": "PostgreSQL protocol"
+    },
+    "order-writes-store": {
+      "description": "Commits order state and transactional outbox messages.",
+      "externalRefs": [],
+      "id": "order-writes-store",
+      "interaction": "synchronous",
+      "name": "Stores orders",
+      "properties": {
+        "transaction": true
+      },
+      "sourceId": "order-service",
+      "tags": [
+        "container",
+        "database"
+      ],
+      "targetId": "commerce-store",
+      "technology": "PostgreSQL protocol"
+    },
+    "order-publishes-order-placed": {
+      "description": "Emits the durable integration event after committing an order.",
+      "externalRefs": [],
+      "id": "order-publishes-order-placed",
+      "interaction": "asynchronous",
+      "name": "Publishes order placed",
+      "properties": {
+        "subject": "orders.placed"
+      },
+      "sourceId": "order-service",
+      "tags": [
+        "container",
+        "event"
+      ],
+      "targetId": "event-stream",
+      "technology": "NATS protocol"
+    },
+    "events-update-inventory": {
+      "description": "Delivers order events for stock reservation and allocation.",
+      "externalRefs": [],
+      "id": "events-update-inventory",
+      "interaction": "asynchronous",
+      "name": "Delivers order events",
+      "properties": {
+        "consumer": "inventory-allocation"
+      },
+      "sourceId": "event-stream",
+      "tags": [
+        "container",
+        "event"
+      ],
+      "targetId": "inventory-worker",
+      "technology": "NATS durable consumer"
+    },
+    "order-calls-payments": {
+      "description": "Calls the fictional payment network before accepting an order.",
+      "externalRefs": [],
+      "id": "order-calls-payments",
+      "interaction": "synchronous",
+      "name": "Requests authorization",
+      "properties": {
+        "timeoutMs": 1000
+      },
+      "sourceId": "order-service",
+      "tags": [
+        "container",
+        "external",
+        "payments"
+      ],
+      "targetId": "constellation-payments",
+      "technology": "JSON over HTTPS"
+    },
+    "inventory-sends-fulfillment": {
+      "description": "Forwards an allocated order to the fictional fulfillment network.",
+      "externalRefs": [],
+      "id": "inventory-sends-fulfillment",
+      "interaction": "asynchronous",
+      "name": "Sends allocated order",
+      "properties": {
+        "delivery": "at-least-once"
+      },
+      "sourceId": "inventory-worker",
+      "tags": [
+        "container",
+        "external",
+        "fulfillment"
+      ],
+      "targetId": "waypoint-fulfillment",
+      "technology": "CloudEvents over HTTPS"
+    },
+    "edge-calls-checkout": {
+      "description": "Routes an authenticated checkout request into the order component boundary.",
+      "externalRefs": [],
+      "id": "edge-calls-checkout",
+      "interaction": "synchronous",
+      "name": "Invokes checkout endpoint",
+      "properties": {
+        "route": "/v1/checkouts"
+      },
+      "sourceId": "edge-api",
+      "tags": [
+        "component",
+        "interface"
+      ],
+      "targetId": "checkout-controller",
+      "technology": "Internal HTTP"
+    },
+    "checkout-delegates-order": {
+      "description": "Maps the validated request to a place-order application command.",
+      "externalRefs": [],
+      "id": "checkout-delegates-order",
+      "interaction": "synchronous",
+      "name": "Delegates place order",
+      "properties": {
+        "command": "PlaceOrder"
+      },
+      "sourceId": "checkout-controller",
+      "tags": [
+        "component",
+        "application"
+      ],
+      "targetId": "order-application",
+      "technology": "In-process call"
+    },
+    "order-app-applies-pricing": {
+      "description": "Applies price-list, promotion, tax, and delivery rules.",
+      "externalRefs": [],
+      "id": "order-app-applies-pricing",
+      "interaction": "synchronous",
+      "name": "Calculates final total",
+      "properties": {
+        "deterministic": true
+      },
+      "sourceId": "order-application",
+      "tags": [
+        "component",
+        "domain"
+      ],
+      "targetId": "pricing-policy",
+      "technology": "In-process call"
+    },
+    "order-app-authorizes-payment": {
+      "description": "Requests authorization for the calculated order total.",
+      "externalRefs": [],
+      "id": "order-app-authorizes-payment",
+      "interaction": "synchronous",
+      "name": "Authorizes total",
+      "properties": {
+        "port": "PaymentGateway"
+      },
+      "sourceId": "order-application",
+      "tags": [
+        "component",
+        "payments"
+      ],
+      "targetId": "payment-adapter",
+      "technology": "In-process port"
+    },
+    "payment-adapter-calls-payments": {
+      "description": "Translates and sends an authorization request to Constellation Payments.",
+      "externalRefs": [],
+      "id": "payment-adapter-calls-payments",
+      "interaction": "synchronous",
+      "name": "Calls payment sandbox",
+      "properties": {
+        "adapter": true
+      },
+      "sourceId": "payment-adapter",
+      "tags": [
+        "component",
+        "external",
+        "payments"
+      ],
+      "targetId": "constellation-payments",
+      "technology": "JSON over HTTPS"
+    },
+    "order-app-persists-order": {
+      "description": "Stores accepted order state and its outgoing integration event.",
+      "externalRefs": [],
+      "id": "order-app-persists-order",
+      "interaction": "synchronous",
+      "name": "Persists accepted order",
+      "properties": {
+        "port": "OrderRepository"
+      },
+      "sourceId": "order-application",
+      "tags": [
+        "component",
+        "persistence"
+      ],
+      "targetId": "order-repository",
+      "technology": "In-process port"
+    },
+    "order-repository-writes-store": {
+      "description": "Executes the order and outbox database transaction.",
+      "externalRefs": [],
+      "id": "order-repository-writes-store",
+      "interaction": "synchronous",
+      "name": "Writes transaction",
+      "properties": {
+        "atomic": true
+      },
+      "sourceId": "order-repository",
+      "tags": [
+        "component",
+        "database"
+      ],
+      "targetId": "commerce-store",
+      "technology": "SQL over PostgreSQL protocol"
+    },
+    "order-app-publishes-event": {
+      "description": "Relays the committed order event from the outbox to the event stream.",
+      "externalRefs": [],
+      "id": "order-app-publishes-event",
+      "interaction": "asynchronous",
+      "name": "Publishes committed event",
+      "properties": {
+        "subject": "orders.placed"
+      },
+      "sourceId": "order-application",
+      "tags": [
+        "component",
+        "event"
+      ],
+      "targetId": "event-stream",
+      "technology": "NATS protocol"
+    }
+  },
+  "schemaVersion": 1,
+  "threeD": {
+    "bookmarks": {
+      "system-context-isometric": {
+        "id": "system-context-isometric",
+        "name": "Context isometric overview",
+        "position": {
+          "x": 24,
+          "y": 20,
+          "z": 24
+        },
+        "projection": "orthographic",
+        "target": {
+          "x": 12,
+          "y": 0,
+          "z": 6
+        },
+        "viewId": "system-context",
+        "zoom": 1.05
+      },
+      "core-containers-isometric": {
+        "id": "core-containers-isometric",
+        "name": "Container flow isometric",
+        "position": {
+          "x": 42,
+          "y": 28,
+          "z": 34
+        },
+        "projection": "orthographic",
+        "target": {
+          "x": 18,
+          "y": 1.5,
+          "z": 7
+        },
+        "viewId": "core-containers",
+        "zoom": 0.8
+      },
+      "order-components-isometric": {
+        "id": "order-components-isometric",
+        "name": "Order component flow",
+        "position": {
+          "x": 36,
+          "y": 25,
+          "z": 30
+        },
+        "projection": "orthographic",
+        "target": {
+          "x": 16,
+          "y": 3,
+          "z": 7
+        },
+        "viewId": "order-components",
+        "zoom": 0.9
+      }
+    },
+    "policy": {
+      "coordinateScale": 0.02,
+      "defaultProjection": "orthographic",
+      "elevationStep": 1.5,
+      "platformPadding": 0.75
+    }
+  },
+  "views": {
+    "system-context": {
+      "description": "People and fictional external systems surrounding the Northstar Commerce boundary.",
+      "id": "system-context",
+      "items": {
+        "system-context-item-shopper": {
+          "elementId": "shopper",
+          "id": "system-context-item-shopper"
+        },
+        "system-context-item-merchandiser": {
+          "elementId": "merchandising-manager",
+          "id": "system-context-item-merchandiser"
+        },
+        "system-context-item-commerce": {
+          "elementId": "northstar-commerce",
+          "id": "system-context-item-commerce",
+          "label": "Core commerce platform"
+        },
+        "system-context-item-payments": {
+          "elementId": "constellation-payments",
+          "id": "system-context-item-payments"
+        },
+        "system-context-item-fulfillment": {
+          "elementId": "waypoint-fulfillment",
+          "id": "system-context-item-fulfillment"
+        }
+      },
+      "name": "Northstar Commerce — System Context",
+      "placements": {
+        "system-context-item-shopper": {
+          "height": 96,
+          "width": 190,
+          "x": 0,
+          "y": 100
+        },
+        "system-context-item-merchandiser": {
+          "height": 96,
+          "width": 190,
+          "x": 0,
+          "y": 390
+        },
+        "system-context-item-commerce": {
+          "height": 150,
+          "width": 300,
+          "x": 390,
+          "y": 220
+        },
+        "system-context-item-payments": {
+          "height": 112,
+          "width": 260,
+          "x": 920,
+          "y": 80
+        },
+        "system-context-item-fulfillment": {
+          "height": 112,
+          "width": 260,
+          "x": 920,
+          "y": 420
+        }
+      },
+      "relationshipIds": [
+        "shopper-uses-commerce",
+        "merchandiser-manages-commerce",
+        "commerce-authorizes-payment",
+        "commerce-dispatches-fulfillment"
+      ],
+      "scopeElementId": "northstar-commerce",
+      "type": "context"
+    },
+    "core-containers": {
+      "description": "Executable and data boundaries arranged from users through channels, services, infrastructure, and fictional external systems.",
+      "id": "core-containers",
+      "items": {
+        "core-containers-item-shopper": {
+          "elementId": "shopper",
+          "id": "core-containers-item-shopper"
+        },
+        "core-containers-item-merchandiser": {
+          "elementId": "merchandising-manager",
+          "id": "core-containers-item-merchandiser"
+        },
+        "core-containers-item-storefront": {
+          "elementId": "storefront-web",
+          "id": "core-containers-item-storefront"
+        },
+        "core-containers-item-backoffice": {
+          "elementId": "backoffice-web",
+          "id": "core-containers-item-backoffice"
+        },
+        "core-containers-item-edge": {
+          "elementId": "edge-api",
+          "id": "core-containers-item-edge"
+        },
+        "core-containers-item-catalog": {
+          "elementId": "catalog-service",
+          "id": "core-containers-item-catalog"
+        },
+        "core-containers-item-orders": {
+          "elementId": "order-service",
+          "id": "core-containers-item-orders"
+        },
+        "core-containers-item-events": {
+          "elementId": "event-stream",
+          "id": "core-containers-item-events"
+        },
+        "core-containers-item-inventory": {
+          "elementId": "inventory-worker",
+          "id": "core-containers-item-inventory"
+        },
+        "core-containers-item-store": {
+          "elementId": "commerce-store",
+          "id": "core-containers-item-store"
+        },
+        "core-containers-item-payments": {
+          "elementId": "constellation-payments",
+          "id": "core-containers-item-payments"
+        },
+        "core-containers-item-fulfillment": {
+          "elementId": "waypoint-fulfillment",
+          "id": "core-containers-item-fulfillment"
+        }
+      },
+      "name": "Northstar Commerce — Containers",
+      "placements": {
+        "core-containers-item-shopper": {
+          "height": 90,
+          "width": 180,
+          "x": 0,
+          "y": 70
+        },
+        "core-containers-item-merchandiser": {
+          "height": 90,
+          "width": 180,
+          "x": 0,
+          "y": 500
+        },
+        "core-containers-item-storefront": {
+          "height": 110,
+          "width": 230,
+          "x": 280,
+          "y": 50
+        },
+        "core-containers-item-backoffice": {
+          "height": 110,
+          "width": 230,
+          "x": 280,
+          "y": 480
+        },
+        "core-containers-item-edge": {
+          "height": 130,
+          "width": 240,
+          "x": 620,
+          "y": 265
+        },
+        "core-containers-item-catalog": {
+          "height": 110,
+          "width": 240,
+          "x": 980,
+          "y": 40
+        },
+        "core-containers-item-orders": {
+          "height": 130,
+          "width": 240,
+          "x": 980,
+          "y": 255
+        },
+        "core-containers-item-events": {
+          "height": 110,
+          "width": 240,
+          "x": 1320,
+          "y": 255
+        },
+        "core-containers-item-inventory": {
+          "height": 110,
+          "width": 240,
+          "x": 1320,
+          "y": 470
+        },
+        "core-containers-item-store": {
+          "height": 110,
+          "width": 240,
+          "x": 1320,
+          "y": 40
+        },
+        "core-containers-item-payments": {
+          "height": 110,
+          "width": 250,
+          "x": 1660,
+          "y": 140
+        },
+        "core-containers-item-fulfillment": {
+          "height": 110,
+          "width": 250,
+          "x": 1660,
+          "y": 470
+        }
+      },
+      "relationshipIds": [
+        "shopper-opens-storefront",
+        "merchandiser-uses-backoffice",
+        "storefront-calls-edge",
+        "backoffice-calls-edge",
+        "edge-queries-catalog",
+        "edge-submits-order",
+        "catalog-reads-store",
+        "order-writes-store",
+        "order-publishes-order-placed",
+        "events-update-inventory",
+        "order-calls-payments",
+        "inventory-sends-fulfillment"
+      ],
+      "scopeElementId": "northstar-commerce",
+      "type": "container"
+    },
+    "order-components": {
+      "description": "Checkout flow from the edge through order application components to payment, persistence, and event boundaries.",
+      "id": "order-components",
+      "items": {
+        "order-components-item-edge": {
+          "elementId": "edge-api",
+          "id": "order-components-item-edge"
+        },
+        "order-components-item-controller": {
+          "elementId": "checkout-controller",
+          "id": "order-components-item-controller"
+        },
+        "order-components-item-application": {
+          "elementId": "order-application",
+          "id": "order-components-item-application"
+        },
+        "order-components-item-pricing": {
+          "elementId": "pricing-policy",
+          "id": "order-components-item-pricing"
+        },
+        "order-components-item-payment-adapter": {
+          "elementId": "payment-adapter",
+          "id": "order-components-item-payment-adapter"
+        },
+        "order-components-item-repository": {
+          "elementId": "order-repository",
+          "id": "order-components-item-repository"
+        },
+        "order-components-item-events": {
+          "elementId": "event-stream",
+          "id": "order-components-item-events"
+        },
+        "order-components-item-payments": {
+          "elementId": "constellation-payments",
+          "id": "order-components-item-payments"
+        },
+        "order-components-item-store": {
+          "elementId": "commerce-store",
+          "id": "order-components-item-store"
+        }
+      },
+      "name": "Order Service — Components",
+      "placements": {
+        "order-components-item-edge": {
+          "height": 110,
+          "width": 220,
+          "x": 0,
+          "y": 275
+        },
+        "order-components-item-controller": {
+          "height": 110,
+          "width": 240,
+          "x": 340,
+          "y": 275
+        },
+        "order-components-item-application": {
+          "height": 130,
+          "width": 250,
+          "x": 700,
+          "y": 275
+        },
+        "order-components-item-pricing": {
+          "height": 110,
+          "width": 240,
+          "x": 1060,
+          "y": 40
+        },
+        "order-components-item-payment-adapter": {
+          "height": 110,
+          "width": 240,
+          "x": 1060,
+          "y": 210
+        },
+        "order-components-item-repository": {
+          "height": 110,
+          "width": 240,
+          "x": 1060,
+          "y": 380
+        },
+        "order-components-item-events": {
+          "height": 110,
+          "width": 240,
+          "x": 1060,
+          "y": 550
+        },
+        "order-components-item-payments": {
+          "height": 110,
+          "width": 260,
+          "x": 1420,
+          "y": 210
+        },
+        "order-components-item-store": {
+          "height": 110,
+          "width": 260,
+          "x": 1420,
+          "y": 380
+        }
+      },
+      "relationshipIds": [
+        "edge-calls-checkout",
+        "checkout-delegates-order",
+        "order-app-applies-pricing",
+        "order-app-authorizes-payment",
+        "payment-adapter-calls-payments",
+        "order-app-persists-order",
+        "order-repository-writes-store",
+        "order-app-publishes-event"
+      ],
+      "scopeElementId": "order-service",
+      "type": "component"
+    }
+  }
+}
