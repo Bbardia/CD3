@@ -8,11 +8,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@cd3/domain": "workspace:*",
     "elkjs": "^0.12.0"
+  },
+  "devDependencies": {
+    "@cd3/fixtures": "workspace:*"
   }
 }

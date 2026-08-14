@@ -126,6 +126,10 @@ importers:
       elkjs:
         specifier: ^0.12.0
         version: 0.12.0
+    devDependencies:
+      '@cd3/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
 
 packages:
 
