@@ -324,7 +324,9 @@ export const ProjectSchema = ProjectStructureSchema.superRefine((project, contex
     if (!('parentId' in element)) {
       continue;
     }
-    const parent = Object.hasOwn(elements, element.parentId) ? elements[element.parentId] : undefined;
+    const parent = Object.hasOwn(elements, element.parentId)
+      ? elements[element.parentId]
+      : undefined;
     if (parent === undefined) {
       addIssue(
         context,
@@ -356,10 +358,7 @@ export const ProjectSchema = ProjectStructureSchema.superRefine((project, contex
         break;
       }
       visited.add(currentKey);
-      const current: z.infer<typeof ElementSchema> | undefined = Object.hasOwn(
-        elements,
-        currentKey,
-      )
+      const current: z.infer<typeof ElementSchema> | undefined = Object.hasOwn(elements, currentKey)
         ? elements[currentKey]
         : undefined;
       currentKey = current !== undefined && 'parentId' in current ? current.parentId : undefined;
