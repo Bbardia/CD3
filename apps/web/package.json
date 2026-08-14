@@ -7,13 +7,14 @@
     "build": "tsc -p tsconfig.json && vite build",
     "dev": "vite --host 127.0.0.1",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@cd3/domain": "workspace:*",
     "@cd3/fixtures": "workspace:*",
     "@cd3/layout": "workspace:*",
+    "@fontsource-variable/inter": "5.2.8",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "@xyflow/react": "^12.11.3",
