@@ -112,6 +112,23 @@ function CommandHarness() {
   );
 }
 
+function SemanticProbe() {
+  const element = useEditorStore((state) => state.history.project.elements['order-service']);
+  const placement = useEditorStore(
+    (state) =>
+      state.history.project.views['core-containers']?.placements['core-containers-item-orders'],
+  );
+  return (
+    <span data-testid="semantic-probe">
+      {JSON.stringify({
+        kind: element?.kind,
+        parentId: element === undefined || !('parentId' in element) ? undefined : element.parentId,
+        placement: placement === undefined ? undefined : { x: placement.x, y: placement.y },
+      })}
+    </span>
+  );
+}
+
 describe.sequential('CD3 workspace shell', () => {
   beforeEach(() => {
     workerProbeMock.mockReset().mockResolvedValue(false);
@@ -311,6 +328,26 @@ describe.sequential('CD3 workspace shell', () => {
     await user.click(screen.getByRole('button', { name: '2D diagram view' }));
 
     expect(screen.getByTestId('2d-selection-set')).toHaveTextContent('order-service,shopper');
+  });
+
+  it('changes only placement on a drop and never reparents the model', async () => {
+    const user = userEvent.setup();
+    renderApp(
+      <>
+        <App />
+        <SemanticProbe />
+      </>,
+    );
+    const before = JSON.parse(screen.getByTestId('semantic-probe').textContent ?? '{}');
+
+    await user.click(screen.getByRole('button', { name: 'Drop Order Service in 2D' }));
+
+    const after = JSON.parse(screen.getByTestId('semantic-probe').textContent ?? '{}');
+    expect(after.placement).toEqual({ x: 512, y: 96 });
+    expect(after.placement).not.toEqual(before.placement);
+    expect(after.kind).toBe(before.kind);
+    expect(after.parentId).toBe(before.parentId);
+    expect(after.parentId).toBe('northstar-commerce');
   });
 
   it('derives the 3D projection from the accepted 2D placement after a drop', async () => {
