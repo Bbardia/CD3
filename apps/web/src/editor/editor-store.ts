@@ -12,7 +12,7 @@ import {
 } from '@cd3/domain';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-import type { WorkspaceViewId } from '../workspace';
+import { isWorkspaceViewId, type WorkspaceViewId } from '../workspace';
 
 export type EditorMode = '2d' | '3d';
 
@@ -55,6 +55,7 @@ interface NormalizedSelection {
 }
 
 function normalizeSelection(
+  project: ReadonlyProject,
   elementIds: readonly ElementId[],
   primary: ElementId | undefined,
 ): NormalizedSelection {
@@ -62,19 +63,30 @@ function normalizeSelection(
   const seen = new Set<ElementId>();
 
   for (const elementId of elementIds) {
-    if (!seen.has(elementId)) {
+    if (
+      Object.hasOwn(project.elements, elementId) &&
+      project.elements[elementId] !== undefined &&
+      !seen.has(elementId)
+    ) {
       seen.add(elementId);
       ids.push(elementId);
     }
   }
 
-  if (primary !== undefined && !seen.has(primary)) {
-    ids.push(primary);
+  const validPrimary =
+    primary !== undefined &&
+    Object.hasOwn(project.elements, primary) &&
+    project.elements[primary] !== undefined
+      ? primary
+      : undefined;
+
+  if (validPrimary !== undefined && !seen.has(validPrimary)) {
+    ids.push(validPrimary);
   }
 
   return {
     ids: Object.freeze(ids),
-    primary: primary ?? ids[0],
+    primary: validPrimary ?? ids[0],
   };
 }
 
@@ -84,16 +96,53 @@ function equalIds(left: readonly ElementId[], right: readonly ElementId[]): bool
   );
 }
 
+function requireActiveView(project: ReadonlyProject, viewId: string): WorkspaceViewId {
+  if (!isWorkspaceViewId(viewId)) {
+    throw new RangeError(`Unsupported workspace view "${viewId}".`);
+  }
+  if (!Object.hasOwn(project.views, viewId) || project.views[viewId] === undefined) {
+    throw new RangeError(`View "${viewId}" does not exist in project "${project.id}".`);
+  }
+  return viewId;
+}
+
+function updateHistory(state: EditorState, history: CommandHistory): EditorState {
+  const selection = normalizeSelection(
+    history.project,
+    state.selectedElementIds,
+    state.primarySelectedElementId,
+  );
+  const selectionChanged =
+    selection.primary !== state.primarySelectedElementId ||
+    !equalIds(selection.ids, state.selectedElementIds);
+
+  if (history === state.history && state.lastCommandError === undefined && !selectionChanged) {
+    return state;
+  }
+  if (!selectionChanged) {
+    return { ...state, history, lastCommandError: undefined };
+  }
+  return {
+    ...state,
+    history,
+    selectedElementIds: selection.ids,
+    primarySelectedElementId: selection.primary,
+    lastCommandError: undefined,
+  };
+}
+
 export function createEditorStore({
   project,
   activeViewId,
   mode = '2d',
 }: CreateEditorStoreOptions): EditorStore {
+  const validatedActiveViewId = requireActiveView(project, activeViewId);
+
   return createStore<EditorState>()((set) => ({
     history: createCommandHistory(project),
     selectedElementIds: Object.freeze([]),
     primarySelectedElementId: undefined,
-    activeViewId,
+    activeViewId: validatedActiveViewId,
     mode,
     lastCommandError: undefined,
 
@@ -101,10 +150,7 @@ export function createEditorStore({
       set((state) => {
         try {
           const history = applyCommandToHistory(state.history, command);
-          if (history === state.history && state.lastCommandError === undefined) {
-            return state;
-          }
-          return { ...state, history, lastCommandError: undefined };
+          return updateHistory(state, history);
         } catch (error) {
           if (!(error instanceof DomainCommandError)) {
             throw error;
@@ -125,24 +171,18 @@ export function createEditorStore({
     undo: () => {
       set((state) => {
         const history = undoCommand(state.history);
-        if (history === state.history && state.lastCommandError === undefined) {
-          return state;
-        }
-        return { ...state, history, lastCommandError: undefined };
+        return updateHistory(state, history);
       });
     },
     redo: () => {
       set((state) => {
         const history = redoCommand(state.history);
-        if (history === state.history && state.lastCommandError === undefined) {
-          return state;
-        }
-        return { ...state, history, lastCommandError: undefined };
+        return updateHistory(state, history);
       });
     },
     setSelection: (elementIds, primary) => {
       set((state) => {
-        const selection = normalizeSelection(elementIds, primary);
+        const selection = normalizeSelection(state.history.project, elementIds, primary);
         if (
           selection.primary === state.primarySelectedElementId &&
           equalIds(selection.ids, state.selectedElementIds)
@@ -157,7 +197,12 @@ export function createEditorStore({
       });
     },
     setActiveView: (viewId) => {
-      set((state) => (state.activeViewId === viewId ? state : { ...state, activeViewId: viewId }));
+      set((state) => {
+        const validatedViewId = requireActiveView(state.history.project, viewId);
+        return state.activeViewId === validatedViewId
+          ? state
+          : { ...state, activeViewId: validatedViewId };
+      });
     },
     setMode: (nextMode) => {
       set((state) => (state.mode === nextMode ? state : { ...state, mode: nextMode }));

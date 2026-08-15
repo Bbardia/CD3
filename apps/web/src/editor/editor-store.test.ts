@@ -1,10 +1,11 @@
+import type { ElementId, ReadonlyProject } from '@cd3/domain';
 import { act, renderHook } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { createEditorStore } from './editor-store';
 import { EditorStoreProvider, useEditorStore } from './EditorStoreProvider';
-import { project, workspaceViewIds } from '../workspace';
+import { project, workspaceViewIds, type WorkspaceViewId } from '../workspace';
 
 const initialActiveViewId = workspaceViewIds[1];
 
@@ -27,7 +28,87 @@ function createTestStore() {
   });
 }
 
+function projectWithoutView(viewId: WorkspaceViewId): ReadonlyProject {
+  return {
+    ...project,
+    views: Object.fromEntries(
+      Object.entries(project.views).filter(([candidateViewId]) => candidateViewId !== viewId),
+    ),
+    threeD: {
+      ...project.threeD,
+      bookmarks: Object.fromEntries(
+        Object.entries(project.threeD.bookmarks).filter(
+          ([, bookmark]) => bookmark.viewId !== viewId,
+        ),
+      ),
+    },
+  };
+}
+
+const newlyCreatedElement = {
+  id: 'newly-created-system',
+  kind: 'softwareSystem',
+  name: 'Newly Created System',
+  externalRefs: [],
+  properties: {},
+  tags: [],
+} as const;
+const newlyCreatedElementId = newlyCreatedElement.id as ElementId;
+
 describe('editor store', () => {
+  it('rejects unsupported or project-absent initial active views', () => {
+    const unsupportedViewId = 'missing-view' as WorkspaceViewId;
+
+    expect(() => createEditorStore({ project, activeViewId: unsupportedViewId })).toThrowError(
+      new RangeError('Unsupported workspace view "missing-view".'),
+    );
+    expect(() =>
+      createEditorStore({
+        project: projectWithoutView(initialActiveViewId),
+        activeViewId: initialActiveViewId,
+      }),
+    ).toThrowError(
+      new RangeError(`View "${initialActiveViewId}" does not exist in project "${project.id}".`),
+    );
+  });
+
+  it('rejects unsupported or project-absent active view changes without updating state', () => {
+    const unsupportedViewId = 'missing-view' as WorkspaceViewId;
+    const store = createTestStore();
+    const before = store.getState();
+    let notifications = 0;
+    const unsubscribe = store.subscribe(() => {
+      notifications += 1;
+    });
+
+    expect(() => store.getState().setActiveView(unsupportedViewId)).toThrowError(
+      new RangeError('Unsupported workspace view "missing-view".'),
+    );
+    expect(store.getState()).toBe(before);
+    expect(store.getState().history).toBe(before.history);
+    expect(notifications).toBe(0);
+    unsubscribe();
+
+    const absentViewId = workspaceViewIds[0];
+    const storeWithoutView = createEditorStore({
+      project: projectWithoutView(absentViewId),
+      activeViewId: initialActiveViewId,
+    });
+    const beforeAbsentChange = storeWithoutView.getState();
+    let absentNotifications = 0;
+    const unsubscribeAbsent = storeWithoutView.subscribe(() => {
+      absentNotifications += 1;
+    });
+
+    expect(() => storeWithoutView.getState().setActiveView(absentViewId)).toThrowError(
+      new RangeError(`View "${absentViewId}" does not exist in project "${project.id}".`),
+    );
+    expect(storeWithoutView.getState()).toBe(beforeAbsentChange);
+    expect(storeWithoutView.getState().history).toBe(beforeAbsentChange.history);
+    expect(absentNotifications).toBe(0);
+    unsubscribeAbsent();
+  });
+
   it('creates isolated instances with stable actions', () => {
     const first = createTestStore();
     const second = createTestStore();
@@ -108,6 +189,8 @@ describe('editor store', () => {
   it('preserves the exact history and exposes stable data for a domain command error', () => {
     const store = createTestStore();
     const before = store.getState().history;
+    store.getState().setSelection([orderServiceId], orderServiceId);
+    const selectedElementIds = store.getState().selectedElementIds;
 
     store.getState().execute({
       type: 'update-element',
@@ -116,6 +199,8 @@ describe('editor store', () => {
     });
 
     expect(store.getState().history).toBe(before);
+    expect(store.getState().selectedElementIds).toBe(selectedElementIds);
+    expect(store.getState().primarySelectedElementId).toBe(orderServiceId);
     expect(store.getState().lastCommandError).toEqual({
       code: 'ELEMENT_NOT_FOUND',
       message: 'Element "missing-element" does not exist.',
@@ -208,6 +293,114 @@ describe('editor store', () => {
 
     store.getState().setSelection([]);
     expect(store.getState().primarySelectedElementId).toBeUndefined();
+  });
+
+  it('drops missing and inherited element IDs and preserves identity for unchanged selection', () => {
+    const store = createTestStore();
+    const missingElementId = 'missing-element' as ElementId;
+    const inheritedElementId = 'toString' as ElementId;
+
+    store
+      .getState()
+      .setSelection(
+        [missingElementId, orderServiceId, orderServiceId, shopperId],
+        missingElementId,
+      );
+
+    expect(store.getState().selectedElementIds).toEqual(['order-service', 'shopper']);
+    expect(store.getState().primarySelectedElementId).toBe(orderServiceId);
+
+    const before = store.getState();
+    const selectedElementIds = before.selectedElementIds;
+    let notifications = 0;
+    const unsubscribe = store.subscribe(() => {
+      notifications += 1;
+    });
+
+    store
+      .getState()
+      .setSelection(
+        [inheritedElementId, orderServiceId, orderServiceId, shopperId],
+        inheritedElementId,
+      );
+
+    expect(store.getState()).toBe(before);
+    expect(store.getState().selectedElementIds).toBe(selectedElementIds);
+    expect(notifications).toBe(0);
+    unsubscribe();
+  });
+
+  it('removes a deleted selection and falls back to the first surviving selected ID', () => {
+    const store = createTestStore();
+
+    store.getState().setSelection([shopperId, orderServiceId], shopperId);
+    store.getState().execute({ type: 'delete-element', elementId: shopperId });
+
+    expect(store.getState().history.project.elements.shopper).toBeUndefined();
+    expect(store.getState().selectedElementIds).toEqual(['order-service']);
+    expect(store.getState().primarySelectedElementId).toBe(orderServiceId);
+
+    store.getState().undo();
+
+    expect(store.getState().history.project.elements.shopper).toBeDefined();
+    expect(store.getState().selectedElementIds).toEqual(['order-service']);
+    expect(store.getState().primarySelectedElementId).toBe(orderServiceId);
+  });
+
+  it('clears a newly created current selection when creation is undone and does not redo it', () => {
+    const store = createTestStore();
+
+    store.getState().execute({ type: 'create-element', element: newlyCreatedElement });
+    store.getState().setSelection([newlyCreatedElementId], newlyCreatedElementId);
+    store.getState().undo();
+
+    expect(store.getState().history.project.elements[newlyCreatedElement.id]).toBeUndefined();
+    expect(store.getState().selectedElementIds).toEqual([]);
+    expect(store.getState().primarySelectedElementId).toBeUndefined();
+
+    store.getState().redo();
+
+    expect(store.getState().history.project.elements[newlyCreatedElement.id]).toBeDefined();
+    expect(store.getState().selectedElementIds).toEqual([]);
+    expect(store.getState().primarySelectedElementId).toBeUndefined();
+  });
+
+  it('clears a restored element selected before its deletion is redone without restoring it on undo', () => {
+    const store = createTestStore();
+
+    store.getState().execute({ type: 'delete-element', elementId: shopperId });
+    store.getState().undo();
+    store.getState().setSelection([shopperId], shopperId);
+    store.getState().redo();
+
+    expect(store.getState().history.project.elements.shopper).toBeUndefined();
+    expect(store.getState().selectedElementIds).toEqual([]);
+    expect(store.getState().primarySelectedElementId).toBeUndefined();
+
+    store.getState().undo();
+
+    expect(store.getState().history.project.elements.shopper).toBeDefined();
+    expect(store.getState().selectedElementIds).toEqual([]);
+    expect(store.getState().primarySelectedElementId).toBeUndefined();
+  });
+
+  it('preserves selected ID array identity when history changes without invalidating selection', () => {
+    const store = createTestStore();
+    store.getState().setSelection([orderServiceId], orderServiceId);
+    const selectedElementIds = store.getState().selectedElementIds;
+
+    store.getState().execute({
+      type: 'update-element',
+      elementId: orderServiceId,
+      changes: { name: 'Order Service Updated' },
+    });
+    expect(store.getState().selectedElementIds).toBe(selectedElementIds);
+
+    store.getState().undo();
+    expect(store.getState().selectedElementIds).toBe(selectedElementIds);
+
+    store.getState().redo();
+    expect(store.getState().selectedElementIds).toBe(selectedElementIds);
   });
 
   it('clears command errors explicitly', () => {
