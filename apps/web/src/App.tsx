@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import type {
   DeepReadonly,
   Element,
+  ElementChanges,
   ElementId,
   ReadonlyProject,
   Relationship,
@@ -10,7 +11,9 @@ import type {
 
 import { Diagram2D } from './components/Diagram2D';
 import { CommandErrorBanner, EditorToolbar } from './components/EditorToolbar';
-import { useEditorStore } from './editor/EditorStoreProvider';
+import { ElementInspectorForm } from './components/ElementInspectorForm';
+import type { CommandErrorData } from './editor/editor-store';
+import { useEditorStore, useEditorStoreApi } from './editor/EditorStoreProvider';
 import { isTextEntryTarget } from './editor/keyboard';
 import {
   getWorkspaceProjection3D,
@@ -183,10 +186,15 @@ function Inspector({
   project,
   selectedElementId,
   onClear,
+  onUpdateElement,
 }: {
   readonly project: ReadonlyProject;
   readonly selectedElementId: ElementId | undefined;
   readonly onClear: () => void;
+  readonly onUpdateElement: (
+    elementId: ElementId,
+    changes: ElementChanges,
+  ) => CommandErrorData | undefined;
 }) {
   const element =
     selectedElementId === undefined ? undefined : ownElement(project, selectedElementId);
@@ -235,15 +243,12 @@ function Inspector({
 
           <section className="inspector-section">
             <h3>Definition</h3>
-            <p>{element.description ?? 'No description has been recorded.'}</p>
+            <ElementInspectorForm
+              key={element.id}
+              element={element}
+              onSubmit={(changes) => onUpdateElement(element.id, changes)}
+            />
           </section>
-
-          {element.technology === undefined ? null : (
-            <section className="inspector-section">
-              <h3>Technology</h3>
-              <p className="technology-value">{element.technology}</p>
-            </section>
-          )}
 
           <section className="inspector-section">
             <h3>Relationships</h3>
@@ -276,15 +281,6 @@ function Inspector({
             )}
           </section>
 
-          <section className="inspector-section">
-            <h3>Tags</h3>
-            <div className="tag-list">
-              {element.tags.map((tag) => (
-                <span key={tag}>{tag}</span>
-              ))}
-            </div>
-          </section>
-
           <section className="inspector-section inspector-section--datum">
             <h3>Stable identity</h3>
             <code>{element.id}</code>
@@ -309,6 +305,8 @@ export function App() {
   const setSelection = useEditorStore((state) => state.setSelection);
   const toggleSelection = useEditorStore((state) => state.toggleSelection);
   const execute = useEditorStore((state) => state.execute);
+  const clearError = useEditorStore((state) => state.clearError);
+  const storeApi = useEditorStoreApi();
   const [layoutWorkerState, setLayoutWorkerState] = useState<'checking' | 'ready' | 'unavailable'>(
     'checking',
   );
@@ -339,6 +337,19 @@ export function App() {
       execute({ type: 'move-view-items', viewId, moves });
     },
     [execute, viewId],
+  );
+  const updateElement = useCallback(
+    (elementId: ElementId, changes: ElementChanges) => {
+      execute({ type: 'update-element', elementId, changes });
+      // The inspector renders its own rejection inline next to the offending field, so hand the
+      // error to it and keep it out of the stage-level banner.
+      const error = storeApi.getState().lastCommandError;
+      if (error !== undefined) {
+        clearError();
+      }
+      return error;
+    },
+    [clearError, execute, storeApi],
   );
 
   useEffect(() => {
@@ -474,6 +485,7 @@ export function App() {
         project={project}
         selectedElementId={selectedElementId}
         onClear={() => setSelection([])}
+        onUpdateElement={updateElement}
       />
 
       <footer className="status-strip" role="status" aria-live="polite">

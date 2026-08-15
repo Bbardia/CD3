@@ -35,6 +35,18 @@ export function EditorStoreProvider({
   return <EditorStoreContext.Provider value={store}>{children}</EditorStoreContext.Provider>;
 }
 
+/**
+ * Access the read-only store handle itself, for the rare caller that must read state at an exact
+ * moment rather than subscribe to it — such as reading the error a command just produced.
+ */
+export function useEditorStoreApi(): EditorStore {
+  const store = useContext(EditorStoreContext);
+  if (store === undefined) {
+    throw new Error('useEditorStoreApi must be used within an EditorStoreProvider.');
+  }
+  return store;
+}
+
 export function useEditorStore<Selection>(selector: (state: EditorState) => Selection): Selection {
   const store = useContext(EditorStoreContext);
   if (store === undefined) {

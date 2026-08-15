@@ -548,6 +548,128 @@ button:focus-visible,
   opacity: 0.55;
 }
 
+.element-form {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.element-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.element-form__field label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.element-form__field input,
+.element-form__field textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--divider);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.element-form__field input:focus-visible,
+.element-form__field textarea:focus-visible {
+  border-color: #2c5cc5;
+  outline: 2px solid rgba(44, 92, 197, 0.25);
+  outline-offset: 0;
+}
+
+.element-form__field small {
+  color: var(--quiet);
+  font-size: 10px;
+}
+
+.element-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.element-form__actions button {
+  padding: 5px 11px;
+  border: 1px solid var(--divider);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.element-form__actions button[type='submit']:not(:disabled) {
+  border-color: #2c5cc5;
+  background: #2c5cc5;
+  color: #fff;
+}
+
+.element-form__actions button:disabled {
+  color: var(--quiet);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.element-form__state {
+  margin-left: auto;
+  color: var(--quiet);
+  font-size: 10px;
+}
+
+.element-form__error {
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid #e6c9a8;
+  border-radius: 5px;
+  background: #fdf4e8;
+  color: #7a4b12;
+  font-size: 11px;
+}
+
+.element-form__error code {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.element-form__conflict {
+  padding: 8px 10px;
+  border: 1px solid #cfd8d4;
+  border-radius: 5px;
+  background: #f3f6f4;
+  font-size: 11px;
+}
+
+.element-form__conflict p {
+  margin: 0 0 7px;
+}
+
+.element-form__conflict-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.element-form__conflict-actions button {
+  padding: 4px 9px;
+  border: 1px solid var(--divider);
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .command-error {
   display: flex;
   align-items: center;

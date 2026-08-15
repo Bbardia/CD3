@@ -327,6 +327,40 @@ describe.sequential('CD3 workspace shell', () => {
     ).toMatchObject({ x: 512, y: 96 });
   });
 
+  it('edits element metadata through one validated command and refreshes on undo', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: 'Select Order Service in 2D' }));
+    await user.clear(screen.getByLabelText('Name'));
+    await user.type(screen.getByLabelText('Name'), 'Fulfilment Service');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.getByRole('treeitem', { name: 'Fulfilment Service, Container' })).toBeVisible();
+    expect(screen.getByLabelText('Name')).toHaveValue('Fulfilment Service');
+    expect(screen.getByText('Local edits · not persisted')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: /^Undo/ }));
+
+    expect(screen.getByLabelText('Name')).toHaveValue('Order Service');
+    expect(screen.getByRole('treeitem', { name: 'Order Service, Container' })).toBeVisible();
+  });
+
+  it('shows a rejected inspector edit beside the form and not in the stage banner', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: 'Select Order Service in 2D' }));
+    await user.clear(screen.getByLabelText('Tags'));
+    await user.type(screen.getByLabelText('Tags'), 'a'.repeat(70));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    const form = screen.getByRole('form', { name: 'Edit Order Service' });
+    expect(within(form).getByRole('alert')).toHaveTextContent('INVALID_PROJECT');
+    expect(screen.queryByRole('button', { name: 'Dismiss command error' })).toBeNull();
+    expect(screen.getByRole('treeitem', { name: 'Order Service, Container' })).toBeVisible();
+  });
+
   it('keeps Escape from clearing selection while the user is typing', async () => {
     const user = userEvent.setup();
     renderApp(
