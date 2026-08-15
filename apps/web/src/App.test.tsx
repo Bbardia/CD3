@@ -12,12 +12,24 @@ const { projection3DMock, spatialDiagramModuleFactoryMock, workerProbeMock } = v
 }));
 
 vi.mock('./components/Diagram2D', () => ({
-  Diagram2D: ({ onMoveItems, onSelect, projection, selectedElementId }: MockDiagram2DProps) => {
+  Diagram2D: ({
+    onMoveItems,
+    onSelect,
+    projection,
+    selectedElementId,
+    selectedElementIds,
+  }: MockDiagram2DProps) => {
     const orderService = projection.nodes.find((node) => node.elementId === 'order-service');
     return (
       <section aria-label="Mock 2D projection" data-testid="diagram-2d">
         <span data-testid="2d-view-id">{projection.viewId}</span>
         <span data-testid="2d-selection">{selectedElementId ?? 'none'}</span>
+        <span data-testid="2d-selection-set">
+          {selectedElementIds.length === 0 ? 'none' : selectedElementIds.join(',')}
+        </span>
+        <button type="button" onClick={() => onSelect('shopper', true)}>
+          Add Shopper in 2D
+        </button>
         <span data-testid="2d-order-service-position">
           {orderService === undefined ? 'absent' : `${orderService.x},${orderService.y}`}
         </span>
@@ -262,6 +274,43 @@ describe.sequential('CD3 workspace shell', () => {
     await user.click(screen.getByRole('button', { name: /^Redo/ }));
 
     expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent('512,96');
+  });
+
+  it('adds to the selection with a modifier while the inspector follows the newest element', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: 'Select Order Service in 2D' }));
+    await user.click(screen.getByRole('button', { name: 'Add Shopper in 2D' }));
+
+    expect(screen.getByTestId('2d-selection-set')).toHaveTextContent('order-service,shopper');
+    expect(screen.getByTestId('2d-selection')).toHaveTextContent('shopper');
+    expect(screen.getByRole('status')).toHaveTextContent('Shopper +1 more');
+    expect(
+      within(screen.getByRole('complementary', { name: 'Inspector' })).getByRole('heading', {
+        name: 'Shopper',
+      }),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Add Shopper in 2D' }));
+
+    expect(screen.getByTestId('2d-selection-set')).toHaveTextContent('order-service');
+    expect(screen.getByTestId('2d-selection')).toHaveTextContent('order-service');
+  });
+
+  it('keeps a multi-selection across a projection mode switch', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: 'Select Order Service in 2D' }));
+    await user.click(screen.getByRole('button', { name: 'Add Shopper in 2D' }));
+    await user.click(screen.getByRole('button', { name: '3D spatial view' }));
+
+    expect(await screen.findByTestId('3d-selection')).toHaveTextContent('shopper');
+
+    await user.click(screen.getByRole('button', { name: '2D diagram view' }));
+
+    expect(screen.getByTestId('2d-selection-set')).toHaveTextContent('order-service,shopper');
   });
 
   it('derives the 3D projection from the accepted 2D placement after a drop', async () => {

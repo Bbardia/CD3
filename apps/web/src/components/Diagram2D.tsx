@@ -17,8 +17,11 @@ import { DatumNode, type DatumFlowNode } from './DatumNode';
 
 export interface Diagram2DProps {
   readonly projection: ProjectedView2D;
+  /** Drives the inspector, the tree, and edge emphasis. */
   readonly selectedElementId: string | undefined;
-  readonly onSelect: (elementId: string | undefined) => void;
+  /** Every selected element, including the primary. Drives which nodes drag together. */
+  readonly selectedElementIds: readonly string[];
+  readonly onSelect: (elementId: string | undefined, additive?: boolean) => void;
   readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
 }
 
@@ -31,9 +34,11 @@ function compareItemIds(left: ViewItemMove, right: ViewItemMove): number {
 export function Diagram2D({
   projection,
   selectedElementId,
+  selectedElementIds,
   onSelect,
   onMoveItems,
 }: Diagram2DProps) {
+  const selectedElements = useMemo(() => new Set<string>(selectedElementIds), [selectedElementIds]);
   const canonicalNodes = useMemo<DatumFlowNode[]>(
     () =>
       projection.nodes.map((node) => ({
@@ -42,7 +47,7 @@ export function Diagram2D({
         position: node.position,
         width: node.width,
         height: node.height,
-        selected: node.elementId === selectedElementId,
+        selected: selectedElements.has(node.elementId),
         draggable: true,
         connectable: false,
         selectable: true,
@@ -57,7 +62,7 @@ export function Diagram2D({
         style: { width: node.width, height: node.height },
         ariaLabel: `${node.name}, ${node.kind}`,
       })),
-    [projection.nodes, selectedElementId],
+    [projection.nodes, selectedElements],
   );
 
   // Transient renderer state. Pointer movement writes here and nowhere else, so no domain command,
@@ -147,7 +152,9 @@ export function Diagram2D({
         onNodesChange={handleNodesChange}
         onEdgesChange={() => undefined}
         onNodeDragStop={handleNodeDragStop}
-        onNodeClick={(_, node) => onSelect(node.data.elementId)}
+        onNodeClick={(event, node) =>
+          onSelect(node.data.elementId, event.ctrlKey || event.metaKey || event.shiftKey)
+        }
         onPaneClick={() => onSelect(undefined)}
         nodesDraggable
         nodesConnectable={false}

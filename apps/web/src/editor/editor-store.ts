@@ -36,6 +36,7 @@ export interface EditorState {
     elementIds: readonly ElementId[],
     primary?: ElementId | undefined,
   ) => void;
+  readonly toggleSelection: (elementId: ElementId) => void;
   readonly setActiveView: (viewId: WorkspaceViewId) => void;
   readonly setMode: (mode: EditorMode) => void;
   readonly clearError: () => void;
@@ -185,6 +186,34 @@ export function createEditorStore({
     setSelection: (elementIds, primary) => {
       set((state) => {
         const selection = normalizeSelection(state.history.project, elementIds, primary);
+        if (
+          selection.primary === state.primarySelectedElementId &&
+          equalIds(selection.ids, state.selectedElementIds)
+        ) {
+          return state;
+        }
+        return {
+          ...state,
+          selectedElementIds: selection.ids,
+          primarySelectedElementId: selection.primary,
+        };
+      });
+    },
+    toggleSelection: (elementId) => {
+      set((state) => {
+        const alreadySelected = state.selectedElementIds.includes(elementId);
+        const nextIds = alreadySelected
+          ? state.selectedElementIds.filter((candidate) => candidate !== elementId)
+          : [...state.selectedElementIds, elementId];
+        // Removing an element that is not primary must leave the inspector where it is; removing the
+        // primary hands it to the first survivor so the panels never blank out mid-selection.
+        const nextPrimary = alreadySelected
+          ? state.primarySelectedElementId === elementId
+            ? nextIds[0]
+            : state.primarySelectedElementId
+          : elementId;
+        const selection = normalizeSelection(state.history.project, nextIds, nextPrimary);
+
         if (
           selection.primary === state.primarySelectedElementId &&
           equalIds(selection.ids, state.selectedElementIds)

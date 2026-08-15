@@ -300,12 +300,14 @@ export function App() {
   const viewId = useEditorStore((state) => state.activeViewId);
   const mode = useEditorStore((state) => state.mode);
   const selectedElementId = useEditorStore((state) => state.primarySelectedElementId);
+  const selectedElementIds = useEditorStore((state) => state.selectedElementIds);
   // Undone edits leave the project identical to the loaded fixture, so only the undo stack proves
   // the in-memory document has diverged from what was opened.
   const hasLocalEdits = useEditorStore((state) => state.history.undoStack.length > 0);
   const setViewId = useEditorStore((state) => state.setActiveView);
   const setMode = useEditorStore((state) => state.setMode);
   const setSelection = useEditorStore((state) => state.setSelection);
+  const toggleSelection = useEditorStore((state) => state.toggleSelection);
   const execute = useEditorStore((state) => state.execute);
   const [layoutWorkerState, setLayoutWorkerState] = useState<'checking' | 'ready' | 'unavailable'>(
     'checking',
@@ -318,15 +320,19 @@ export function App() {
   const selectedElement =
     selectedElementId === undefined ? undefined : ownElement(project, selectedElementId);
   const selectElement = useCallback(
-    (elementId: string | undefined) => {
+    (elementId: string | undefined, additive = false) => {
       if (elementId === undefined) {
         setSelection([]);
         return;
       }
       const selectedId = elementId as ElementId;
+      if (additive) {
+        toggleSelection(selectedId);
+        return;
+      }
       setSelection([selectedId], selectedId);
     },
-    [setSelection],
+    [setSelection, toggleSelection],
   );
   const moveViewItems = useCallback(
     (moves: readonly ViewItemMove[]) => {
@@ -441,6 +447,7 @@ export function App() {
             <Diagram2D
               projection={workspaceView.twoD}
               selectedElementId={selectedElementId}
+              selectedElementIds={selectedElementIds}
               onSelect={selectElement}
               onMoveItems={moveViewItems}
             />
@@ -477,7 +484,13 @@ export function App() {
         </div>
         <div>
           <span>{warningCount === 0 ? 'No compiler warnings' : `${warningCount} warnings`}</span>
-          <span>{selectedElement === undefined ? 'No selection' : selectedElement.name}</span>
+          <span>
+            {selectedElement === undefined
+              ? 'No selection'
+              : selectedElementIds.length > 1
+                ? `${selectedElement.name} +${selectedElementIds.length - 1} more`
+                : selectedElement.name}
+          </span>
           <span>
             {layoutWorkerState === 'ready'
               ? 'Layout worker ready'

@@ -101,6 +101,7 @@ function renderDiagram(overrides: Partial<Parameters<typeof Diagram2D>[0]> = {})
     <Diagram2D
       projection={baseProjection}
       selectedElementId={undefined}
+      selectedElementIds={[]}
       onSelect={onSelect}
       onMoveItems={onMoveItems}
       {...overrides}
@@ -187,6 +188,7 @@ describe('Diagram2D drag editing', () => {
       <Diagram2D
         projection={projectionAfterMove([{ itemId: lowerItemId, x: 640, y: 320 }])}
         selectedElementId={undefined}
+        selectedElementIds={[]}
         onSelect={vi.fn()}
         onMoveItems={vi.fn()}
       />,
@@ -206,6 +208,7 @@ describe('Diagram2D drag editing', () => {
       <Diagram2D
         projection={otherProjection}
         selectedElementId={undefined}
+        selectedElementIds={[]}
         onSelect={vi.fn()}
         onMoveItems={vi.fn()}
       />,
@@ -220,13 +223,59 @@ describe('Diagram2D drag editing', () => {
     const { onSelect } = renderDiagram();
 
     act(() => {
-      latestFlowProps().onNodeClick({}, nodeById(lowerItemId));
+      latestFlowProps().onNodeClick(
+        { ctrlKey: false, metaKey: false, shiftKey: false },
+        nodeById(lowerItemId),
+      );
     });
-    expect(onSelect).toHaveBeenCalledWith(nodeById(lowerItemId).data.elementId);
+    expect(onSelect).toHaveBeenCalledWith(nodeById(lowerItemId).data.elementId, false);
 
     act(() => {
       latestFlowProps().onPaneClick({});
     });
     expect(onSelect).toHaveBeenCalledWith(undefined);
+  });
+
+  it.each([
+    ['Control', { ctrlKey: true, metaKey: false, shiftKey: false }],
+    ['Meta', { ctrlKey: false, metaKey: true, shiftKey: false }],
+    ['Shift', { ctrlKey: false, metaKey: false, shiftKey: true }],
+  ])('reports a %s-modified click as an additive selection', (_label, modifiers) => {
+    const { onSelect } = renderDiagram();
+
+    act(() => {
+      latestFlowProps().onNodeClick(modifiers, nodeById(lowerItemId));
+    });
+
+    expect(onSelect).toHaveBeenCalledWith(nodeById(lowerItemId).data.elementId, true);
+  });
+
+  it('marks every selected element rather than only the primary one', () => {
+    const primaryElementId = firstNode.elementId;
+    const secondaryElementId = secondNode.elementId;
+    renderDiagram({
+      selectedElementId: primaryElementId,
+      selectedElementIds: [primaryElementId, secondaryElementId],
+    });
+
+    expect(nodeById(firstNode.viewItemId).selected).toBe(true);
+    expect(nodeById(secondNode.viewItemId).selected).toBe(true);
+  });
+
+  it('commits a group drag of the whole selection as one sorted command', () => {
+    const { onMoveItems } = renderDiagram({
+      selectedElementId: firstNode.elementId,
+      selectedElementIds: [firstNode.elementId, secondNode.elementId],
+    });
+
+    dragTo(higherItemId, 700, 400);
+    dragTo(lowerItemId, 640, 320);
+    dropDragged([higherItemId, lowerItemId]);
+
+    expect(onMoveItems).toHaveBeenCalledOnce();
+    expect(onMoveItems).toHaveBeenCalledWith([
+      { itemId: lowerItemId, x: 640, y: 320 },
+      { itemId: higherItemId, x: 700, y: 400 },
+    ]);
   });
 });

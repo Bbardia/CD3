@@ -290,6 +290,61 @@ describe('editor store', () => {
     expect(store.getState().history).toBe(history);
   });
 
+  it('toggles elements into and out of the selection and keeps history untouched', () => {
+    const store = createTestStore();
+    const history = store.getState().history;
+
+    store.getState().toggleSelection(orderServiceId);
+    expect(store.getState().selectedElementIds).toEqual(['order-service']);
+    expect(store.getState().primarySelectedElementId).toBe('order-service');
+
+    store.getState().toggleSelection(shopperId);
+    expect(store.getState().selectedElementIds).toEqual(['order-service', 'shopper']);
+    expect(store.getState().primarySelectedElementId).toBe('shopper');
+
+    store.getState().toggleSelection(shopperId);
+    expect(store.getState().selectedElementIds).toEqual(['order-service']);
+    expect(store.getState().primarySelectedElementId).toBe('order-service');
+
+    store.getState().toggleSelection(orderServiceId);
+    expect(store.getState().selectedElementIds).toEqual([]);
+    expect(store.getState().primarySelectedElementId).toBeUndefined();
+    expect(store.getState().history).toBe(history);
+  });
+
+  it('keeps the primary selection stable when a different element is toggled off', () => {
+    const store = createTestStore();
+
+    store.getState().setSelection([orderServiceId, shopperId, constellationPaymentsId], shopperId);
+    store.getState().toggleSelection(orderServiceId);
+
+    expect(store.getState().selectedElementIds).toEqual(['shopper', 'constellation-payments']);
+    expect(store.getState().primarySelectedElementId).toBe('shopper');
+  });
+
+  it('hands the primary role to the first survivor when the primary is toggled off', () => {
+    const store = createTestStore();
+
+    store.getState().setSelection([orderServiceId, shopperId, constellationPaymentsId], shopperId);
+    store.getState().toggleSelection(shopperId);
+
+    expect(store.getState().selectedElementIds).toEqual([
+      'order-service',
+      'constellation-payments',
+    ]);
+    expect(store.getState().primarySelectedElementId).toBe('order-service');
+  });
+
+  it('ignores toggling an element that does not exist in the project', () => {
+    const store = createTestStore();
+    store.getState().setSelection([orderServiceId], orderServiceId);
+    const before = store.getState();
+
+    store.getState().toggleSelection('missing-element' as ElementId);
+
+    expect(store.getState()).toBe(before);
+  });
+
   it('deduplicates in first-seen order and appends a missing explicit primary', () => {
     const store = createTestStore();
 
