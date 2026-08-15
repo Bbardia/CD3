@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "immer": "^11.1.16",
     "zod": "^4.4.3"
   }
 }
