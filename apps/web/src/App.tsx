@@ -1,5 +1,12 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import type { DeepReadonly, Element, ElementId, ReadonlyProject, Relationship } from '@cd3/domain';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import type {
+  DeepReadonly,
+  Element,
+  ElementId,
+  ReadonlyProject,
+  Relationship,
+  ViewItemMove,
+} from '@cd3/domain';
 
 import { Diagram2D } from './components/Diagram2D';
 import { CommandErrorBanner, EditorToolbar } from './components/EditorToolbar';
@@ -299,6 +306,7 @@ export function App() {
   const setViewId = useEditorStore((state) => state.setActiveView);
   const setMode = useEditorStore((state) => state.setMode);
   const setSelection = useEditorStore((state) => state.setSelection);
+  const execute = useEditorStore((state) => state.execute);
   const [layoutWorkerState, setLayoutWorkerState] = useState<'checking' | 'ready' | 'unavailable'>(
     'checking',
   );
@@ -309,14 +317,23 @@ export function App() {
   );
   const selectedElement =
     selectedElementId === undefined ? undefined : ownElement(project, selectedElementId);
-  const selectElement = (elementId: string | undefined) => {
-    if (elementId === undefined) {
-      setSelection([]);
-      return;
-    }
-    const selectedId = elementId as ElementId;
-    setSelection([selectedId], selectedId);
-  };
+  const selectElement = useCallback(
+    (elementId: string | undefined) => {
+      if (elementId === undefined) {
+        setSelection([]);
+        return;
+      }
+      const selectedId = elementId as ElementId;
+      setSelection([selectedId], selectedId);
+    },
+    [setSelection],
+  );
+  const moveViewItems = useCallback(
+    (moves: readonly ViewItemMove[]) => {
+      execute({ type: 'move-view-items', viewId, moves });
+    },
+    [execute, viewId],
+  );
 
   useEffect(() => {
     const clearOnEscape = (event: KeyboardEvent) => {
@@ -367,7 +384,7 @@ export function App() {
             <span aria-hidden="true" />{' '}
             {hasLocalEdits ? 'Local edits · not persisted' : 'Sample fixture · local session'}
           </span>
-          <span className="read-only-badge">Read-only slice</span>
+          <span className="read-only-badge">2D layout editing</span>
           <button type="button" className="icon-button" aria-label="Workspace menu">
             ···
           </button>
@@ -425,6 +442,7 @@ export function App() {
               projection={workspaceView.twoD}
               selectedElementId={selectedElementId}
               onSelect={selectElement}
+              onMoveItems={moveViewItems}
             />
           ) : projection3D === undefined ? null : (
             <Suspense

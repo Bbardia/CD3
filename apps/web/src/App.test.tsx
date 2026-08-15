@@ -12,7 +12,7 @@ const { projection3DMock, spatialDiagramModuleFactoryMock, workerProbeMock } = v
 }));
 
 vi.mock('./components/Diagram2D', () => ({
-  Diagram2D: ({ onSelect, projection, selectedElementId }: MockDiagram2DProps) => {
+  Diagram2D: ({ onMoveItems, onSelect, projection, selectedElementId }: MockDiagram2DProps) => {
     const orderService = projection.nodes.find((node) => node.elementId === 'order-service');
     return (
       <section aria-label="Mock 2D projection" data-testid="diagram-2d">
@@ -23,6 +23,12 @@ vi.mock('./components/Diagram2D', () => ({
         </span>
         <button type="button" onClick={() => onSelect('order-service')}>
           Select Order Service in 2D
+        </button>
+        <button
+          type="button"
+          onClick={() => onMoveItems([{ itemId: 'core-containers-item-orders', x: 512, y: 96 }])}
+        >
+          Drop Order Service in 2D
         </button>
       </section>
     );
@@ -116,7 +122,7 @@ describe.sequential('CD3 workspace shell', () => {
     expect(projection3DMock).toHaveBeenCalledWith(project, 'core-containers');
   });
 
-  it('renders an accessible read-only application shell and mode/view controls', () => {
+  it('renders an accessible application shell with mode, view, and history controls', () => {
     renderApp();
 
     expect(screen.getByRole('banner')).toHaveTextContent('CD3');
@@ -234,6 +240,42 @@ describe.sequential('CD3 workspace shell', () => {
     await user.click(screen.getByRole('button', { name: /^Undo/ }));
 
     expect(screen.getByText('Sample fixture · local session')).toBeVisible();
+  });
+
+  it('turns one accepted drop into one undoable history entry', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const originalPosition = screen.getByTestId('2d-order-service-position').textContent;
+
+    await user.click(screen.getByRole('button', { name: 'Drop Order Service in 2D' }));
+
+    expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent('512,96');
+    expect(screen.getByRole('button', { name: /^Undo/ })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /^Undo/ }));
+
+    expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent(
+      String(originalPosition),
+    );
+    expect(screen.getByRole('button', { name: /^Undo/ })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /^Redo/ }));
+
+    expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent('512,96');
+  });
+
+  it('derives the 3D projection from the accepted 2D placement after a drop', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: 'Drop Order Service in 2D' }));
+    await user.click(screen.getByRole('button', { name: '3D spatial view' }));
+
+    expect(await screen.findByTestId('diagram-3d')).toBeVisible();
+    const projectedProject = projection3DMock.mock.lastCall?.[0] as typeof project;
+    expect(
+      projectedProject.views['core-containers']?.placements['core-containers-item-orders'],
+    ).toMatchObject({ x: 512, y: 96 });
   });
 
   it('keeps Escape from clearing selection while the user is typing', async () => {

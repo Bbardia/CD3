@@ -1,13 +1,16 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   Controls,
   MarkerType,
   ReactFlow,
   type Edge,
+  type NodeChange,
   type NodeTypes,
 } from '@xyflow/react';
+import type { ViewItemMove } from '@cd3/domain';
 import type { ProjectedView2D } from '@cd3/layout';
 
 import { DatumNode, type DatumFlowNode } from './DatumNode';
@@ -16,12 +19,22 @@ export interface Diagram2DProps {
   readonly projection: ProjectedView2D;
   readonly selectedElementId: string | undefined;
   readonly onSelect: (elementId: string | undefined) => void;
+  readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
 }
 
 const nodeTypes = { datum: DatumNode } satisfies NodeTypes;
 
-export function Diagram2D({ projection, selectedElementId, onSelect }: Diagram2DProps) {
-  const nodes = useMemo<DatumFlowNode[]>(
+function compareItemIds(left: ViewItemMove, right: ViewItemMove): number {
+  return left.itemId < right.itemId ? -1 : left.itemId > right.itemId ? 1 : 0;
+}
+
+export function Diagram2D({
+  projection,
+  selectedElementId,
+  onSelect,
+  onMoveItems,
+}: Diagram2DProps) {
+  const canonicalNodes = useMemo<DatumFlowNode[]>(
     () =>
       projection.nodes.map((node) => ({
         id: node.viewItemId,
@@ -30,7 +43,7 @@ export function Diagram2D({ projection, selectedElementId, onSelect }: Diagram2D
         width: node.width,
         height: node.height,
         selected: node.elementId === selectedElementId,
-        draggable: false,
+        draggable: true,
         connectable: false,
         selectable: true,
         focusable: true,
@@ -45,6 +58,43 @@ export function Diagram2D({ projection, selectedElementId, onSelect }: Diagram2D
         ariaLabel: `${node.name}, ${node.kind}`,
       })),
     [projection.nodes, selectedElementId],
+  );
+
+  // Transient renderer state. Pointer movement writes here and nowhere else, so no domain command,
+  // validation, or projection runs until the gesture ends.
+  const [nodes, setNodes] = useState<DatumFlowNode[]>(canonicalNodes);
+
+  // A new canonical projection always wins: it arrives from an accepted command, a view switch, or
+  // a selection change, and any in-flight preview is stale by definition.
+  useEffect(() => {
+    setNodes(canonicalNodes);
+  }, [canonicalNodes]);
+
+  const handleNodesChange = useCallback((changes: NodeChange<DatumFlowNode>[]) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+  }, []);
+
+  const handleNodeDragStop = useCallback(
+    (_event: unknown, _node: DatumFlowNode, draggedNodes: DatumFlowNode[]) => {
+      const canonicalPositions = new Map<string, Readonly<{ x: number; y: number }>>(
+        projection.nodes.map((node) => [node.viewItemId, node.position]),
+      );
+      const moves = draggedNodes
+        .map((node) => ({ itemId: node.id, x: node.position.x, y: node.position.y }))
+        .sort(compareItemIds);
+      const moved = moves.some((move) => {
+        const canonical = canonicalPositions.get(move.itemId);
+        return canonical === undefined || canonical.x !== move.x || canonical.y !== move.y;
+      });
+
+      if (moved) {
+        onMoveItems(moves);
+      }
+      // Reset unconditionally. An accepted command replaces `canonicalNodes` and the effect above
+      // re-synchronizes; a rejected one leaves it untouched, so this is what snaps the preview back.
+      setNodes(canonicalNodes);
+    },
+    [canonicalNodes, onMoveItems, projection.nodes],
   );
 
   const edges = useMemo<Edge[]>(
@@ -94,11 +144,12 @@ export function Diagram2D({ projection, selectedElementId, onSelect }: Diagram2D
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={() => undefined}
+        onNodesChange={handleNodesChange}
         onEdgesChange={() => undefined}
+        onNodeDragStop={handleNodeDragStop}
         onNodeClick={(_, node) => onSelect(node.data.elementId)}
         onPaneClick={() => onSelect(undefined)}
-        nodesDraggable={false}
+        nodesDraggable
         nodesConnectable={false}
         elementsSelectable
         fitView
