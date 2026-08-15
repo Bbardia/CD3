@@ -20,8 +20,57 @@ export interface WorkspaceView {
 }
 
 const workspaceViewIdSet = new Set<string>(workspaceViewIds);
+const deeplyFrozenProjects = new WeakSet<ReadonlyProject>();
 const workspaceViewCache = new WeakMap<ReadonlyProject, Map<WorkspaceViewId, WorkspaceView>>();
 const projection3DCache = new WeakMap<ReadonlyProject, Map<WorkspaceViewId, ProjectedView3D>>();
+
+function isDeeplyFrozenProject(activeProject: ReadonlyProject): boolean {
+  if (deeplyFrozenProjects.has(activeProject)) {
+    return true;
+  }
+
+  const visited = new Set<object>();
+  const isDeeplyFrozenValue = (value: unknown): boolean => {
+    if (value === null || typeof value !== 'object') {
+      return typeof value !== 'function';
+    }
+    if (visited.has(value)) {
+      return true;
+    }
+
+    const prototype = Reflect.getPrototypeOf(value);
+    const isJsonLikeObject = Array.isArray(value)
+      ? prototype === Array.prototype
+      : prototype === Object.prototype || prototype === null;
+    if (!isJsonLikeObject || !Object.isFrozen(value)) {
+      return false;
+    }
+
+    visited.add(value);
+    for (const key of Reflect.ownKeys(value)) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+      if (
+        descriptor === undefined ||
+        !('value' in descriptor) ||
+        !isDeeplyFrozenValue(descriptor.value)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  try {
+    if (!isDeeplyFrozenValue(activeProject)) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  deeplyFrozenProjects.add(activeProject);
+  return true;
+}
 
 export function isWorkspaceViewId(viewId: string): viewId is WorkspaceViewId {
   return workspaceViewIdSet.has(viewId);
@@ -36,13 +85,10 @@ function requireWorkspaceViewId(viewId: string): WorkspaceViewId {
 
 export function getWorkspaceView(activeProject: ReadonlyProject, viewId: string): WorkspaceView {
   const workspaceViewId = requireWorkspaceViewId(viewId);
-  let projectCache = workspaceViewCache.get(activeProject);
-  if (projectCache === undefined) {
-    projectCache = new Map();
-    workspaceViewCache.set(activeProject, projectCache);
-  }
+  const cacheable = isDeeplyFrozenProject(activeProject);
+  let projectCache = cacheable ? workspaceViewCache.get(activeProject) : undefined;
 
-  const cached = projectCache.get(workspaceViewId);
+  const cached = projectCache?.get(workspaceViewId);
   if (cached !== undefined) {
     return cached;
   }
@@ -52,7 +98,11 @@ export function getWorkspaceView(activeProject: ReadonlyProject, viewId: string)
     compiled,
     twoD: projectViewTo2D(compiled),
   });
-  projectCache.set(workspaceViewId, workspaceView);
+  if (cacheable) {
+    projectCache ??= new Map();
+    projectCache.set(workspaceViewId, workspaceView);
+    workspaceViewCache.set(activeProject, projectCache);
+  }
   return workspaceView;
 }
 
@@ -61,19 +111,20 @@ export function getWorkspaceProjection3D(
   viewId: string,
 ): ProjectedView3D {
   const workspaceViewId = requireWorkspaceViewId(viewId);
-  let projectCache = projection3DCache.get(activeProject);
-  if (projectCache === undefined) {
-    projectCache = new Map();
-    projection3DCache.set(activeProject, projectCache);
-  }
+  const cacheable = isDeeplyFrozenProject(activeProject);
+  let projectCache = cacheable ? projection3DCache.get(activeProject) : undefined;
 
-  const cached = projectCache.get(workspaceViewId);
+  const cached = projectCache?.get(workspaceViewId);
   if (cached !== undefined) {
     return cached;
   }
 
   const { compiled } = getWorkspaceView(activeProject, workspaceViewId);
   const projection = projectViewTo3D(compiled, activeProject.threeD.policy);
-  projectCache.set(workspaceViewId, projection);
+  if (cacheable) {
+    projectCache ??= new Map();
+    projectCache.set(workspaceViewId, projection);
+    projection3DCache.set(activeProject, projectCache);
+  }
   return projection;
 }

@@ -5,8 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as WorkspaceModule from './workspace';
 
-const { projection3DMock, workerProbeMock } = vi.hoisted(() => ({
+const { projection3DMock, spatialDiagramModuleFactoryMock, workerProbeMock } = vi.hoisted(() => ({
   projection3DMock: vi.fn(),
+  spatialDiagramModuleFactoryMock: vi.fn(),
   workerProbeMock: vi.fn(),
 }));
 
@@ -28,17 +29,20 @@ vi.mock('./components/Diagram2D', () => ({
   },
 }));
 
-vi.mock('./components/SpatialDiagram', () => ({
-  SpatialDiagram: ({ onSelect, projection, selectedElementId }: MockSpatialDiagramProps) => (
-    <section aria-label="Mock 3D projection" data-testid="diagram-3d">
-      <span data-testid="3d-view-id">{projection.viewId}</span>
-      <span data-testid="3d-selection">{selectedElementId ?? 'none'}</span>
-      <button type="button" onClick={() => onSelect('constellation-payments')}>
-        Select Constellation Payments in 3D
-      </button>
-    </section>
-  ),
-}));
+vi.mock('./components/SpatialDiagram', () => {
+  spatialDiagramModuleFactoryMock();
+  return {
+    SpatialDiagram: ({ onSelect, projection, selectedElementId }: MockSpatialDiagramProps) => (
+      <section aria-label="Mock 3D projection" data-testid="diagram-3d">
+        <span data-testid="3d-view-id">{projection.viewId}</span>
+        <span data-testid="3d-selection">{selectedElementId ?? 'none'}</span>
+        <button type="button" onClick={() => onSelect('constellation-payments')}>
+          Select Constellation Payments in 3D
+        </button>
+      </section>
+    ),
+  };
+});
 
 vi.mock('./workers/elk-worker-client', () => ({
   probeElkLayoutWorker: workerProbeMock,
@@ -90,10 +94,26 @@ function CommandHarness() {
   );
 }
 
-describe('CD3 workspace shell', () => {
+describe.sequential('CD3 workspace shell', () => {
   beforeEach(() => {
     workerProbeMock.mockReset().mockResolvedValue(false);
     projection3DMock.mockClear();
+  });
+
+  it('loads the SpatialDiagram module only after switching from 2D to 3D', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    expect(screen.getByTestId('diagram-2d')).toBeVisible();
+    expect(spatialDiagramModuleFactoryMock).not.toHaveBeenCalled();
+    expect(projection3DMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '3D spatial view' }));
+
+    expect(await screen.findByTestId('diagram-3d')).toBeVisible();
+    expect(spatialDiagramModuleFactoryMock).toHaveBeenCalledOnce();
+    expect(projection3DMock).toHaveBeenCalledOnce();
+    expect(projection3DMock).toHaveBeenCalledWith(project, 'core-containers');
   });
 
   it('renders an accessible read-only application shell and mode/view controls', () => {
@@ -178,19 +198,6 @@ describe('CD3 workspace shell', () => {
     renderApp();
 
     expect(await screen.findByText('Layout worker unavailable')).toBeVisible();
-  });
-
-  it('does not derive a 3D projection until the store mode switches to 3D', async () => {
-    const user = userEvent.setup();
-    renderApp();
-
-    expect(projection3DMock).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('button', { name: '3D spatial view' }));
-
-    expect(await screen.findByTestId('diagram-3d')).toBeVisible();
-    expect(projection3DMock).toHaveBeenCalledOnce();
-    expect(projection3DMock).toHaveBeenCalledWith(project, 'core-containers');
   });
 
   it('renders a new project projection after a command executes through the editor store', async () => {

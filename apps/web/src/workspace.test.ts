@@ -1,4 +1,4 @@
-import { applyCommand } from '@cd3/domain';
+import { applyCommand, createCommandHistory } from '@cd3/domain';
 import { describe, expect, it } from 'vitest';
 
 import { getWorkspaceProjection3D, getWorkspaceView, project } from './workspace';
@@ -8,13 +8,14 @@ const expectedCounts = {
   'core-containers': { elements: 12, relationships: 12 },
   'order-components': { elements: 9, relationships: 8 },
 } as const;
+const parityProject = createCommandHistory(project).project;
 
 describe('workspace view projections', () => {
   it.each(Object.entries(expectedCounts))(
     'keeps compiler, 2D, and separately derived 3D semantic IDs in parity for %s',
     (viewId, counts) => {
-      const workspaceView = getWorkspaceView(project, viewId);
-      const threeD = getWorkspaceProjection3D(project, viewId);
+      const workspaceView = getWorkspaceView(parityProject, viewId);
+      const threeD = getWorkspaceProjection3D(parityProject, viewId);
       const compiledElementIds = workspaceView.compiled.items.map((item) => item.elementId);
       const compiledRelationshipIds = workspaceView.compiled.relationships.map(
         (relationship) => relationship.relationshipId,
@@ -34,28 +35,88 @@ describe('workspace view projections', () => {
   );
 
   it('memoizes immutable projections by project identity and view', () => {
-    const first = getWorkspaceView(project, 'core-containers');
-    const second = getWorkspaceView(project, 'core-containers');
-    const firstThreeD = getWorkspaceProjection3D(project, 'core-containers');
-    const secondThreeD = getWorkspaceProjection3D(project, 'core-containers');
+    const immutableProject = createCommandHistory(project).project;
+    const first = getWorkspaceView(immutableProject, 'core-containers');
+    const second = getWorkspaceView(immutableProject, 'core-containers');
+    const firstThreeD = getWorkspaceProjection3D(immutableProject, 'core-containers');
+    const secondThreeD = getWorkspaceProjection3D(immutableProject, 'core-containers');
 
     expect(second).toBe(first);
     expect(secondThreeD).toBe(firstThreeD);
     expect(Object.isFrozen(first)).toBe(true);
-    expect(first.twoD.viewId).toBe(project.views['core-containers']?.id);
-    expect(firstThreeD.policy).toEqual(project.threeD.policy);
+    expect(first.twoD.viewId).toBe(immutableProject.views['core-containers']?.id);
+    expect(firstThreeD.policy).toEqual(immutableProject.threeD.policy);
+  });
+
+  it('recomputes a mutable same-identity 2D projection after a nested placement changes', () => {
+    const mutableProject = structuredClone(project);
+    const mutableView = mutableProject.views['core-containers'];
+    if (mutableView === undefined) {
+      throw new Error('The fixture must include the core-containers view.');
+    }
+    const first = getWorkspaceView(mutableProject, 'core-containers');
+    const firstOrderNode = first.twoD.nodes.find(
+      (node) => node.id === 'core-containers-item-orders',
+    );
+
+    mutableView.placements['core-containers-item-orders'] = {
+      x: 1_234,
+      y: 432,
+      width: 240,
+      height: 130,
+    };
+
+    const updated = getWorkspaceView(mutableProject, 'core-containers');
+    const updatedOrderNode = updated.twoD.nodes.find(
+      (node) => node.id === 'core-containers-item-orders',
+    );
+
+    expect(updated).not.toBe(first);
+    expect(firstOrderNode).toMatchObject({ x: 980, y: 255 });
+    expect(updatedOrderNode).toMatchObject({ x: 1_234, y: 432 });
+  });
+
+  it('recomputes a shallow-root-frozen same-identity 3D projection after nested inputs change', () => {
+    const shallowFrozenProject = Object.freeze(structuredClone(project));
+    const shallowFrozenView = shallowFrozenProject.views['core-containers'];
+    if (shallowFrozenView === undefined) {
+      throw new Error('The fixture must include the core-containers view.');
+    }
+    const first = getWorkspaceProjection3D(shallowFrozenProject, 'core-containers');
+    const firstOrderNode = first.nodes.find((node) => node.id === 'core-containers-item-orders');
+
+    shallowFrozenView.placements['core-containers-item-orders'] = {
+      x: 1_234,
+      y: 432,
+      width: 240,
+      height: 130,
+    };
+    shallowFrozenProject.threeD.policy.coordinateScale = 0.03;
+    shallowFrozenProject.threeD.policy.elevationStep = 2.25;
+
+    const updated = getWorkspaceProjection3D(shallowFrozenProject, 'core-containers');
+    const updatedOrderNode = updated.nodes.find(
+      (node) => node.id === 'core-containers-item-orders',
+    );
+
+    expect(updated).not.toBe(first);
+    expect(first.policy).toMatchObject({ coordinateScale: 0.02, elevationStep: 1.5 });
+    expect(firstOrderNode?.position).toEqual([19.6, 1.5, 5.1]);
+    expect(updated.policy).toMatchObject({ coordinateScale: 0.03, elevationStep: 2.25 });
+    expect(updatedOrderNode?.position).toEqual([37.02, 2.25, 12.96]);
   });
 
   it('projects a moved command result without mutating or invalidating the old project cache', () => {
-    const original = getWorkspaceView(project, 'core-containers');
-    const originalThreeD = getWorkspaceProjection3D(project, 'core-containers');
+    const originalProject = createCommandHistory(project).project;
+    const original = getWorkspaceView(originalProject, 'core-containers');
+    const originalThreeD = getWorkspaceProjection3D(originalProject, 'core-containers');
     const originalOrderNode = original.twoD.nodes.find(
       (node) => node.id === 'core-containers-item-orders',
     );
     const originalOrderNode3D = originalThreeD.nodes.find(
       (node) => node.id === 'core-containers-item-orders',
     );
-    const result = applyCommand(project, {
+    const result = applyCommand(originalProject, {
       type: 'move-view-items',
       viewId: 'core-containers',
       moves: [{ itemId: 'core-containers-item-orders', x: 1_234, y: 432 }],
@@ -65,16 +126,19 @@ describe('workspace view projections', () => {
     const movedOrderNode = moved.twoD.nodes.find(
       (node) => node.id === 'core-containers-item-orders',
     );
-    const movedOrderNode3D = getWorkspaceProjection3D(result.project, 'core-containers').nodes.find(
+    const movedThreeD = getWorkspaceProjection3D(result.project, 'core-containers');
+    const movedOrderNode3D = movedThreeD.nodes.find(
       (node) => node.id === 'core-containers-item-orders',
     );
 
-    expect(result.project).not.toBe(project);
+    expect(result.project).not.toBe(originalProject);
     expect(moved).not.toBe(original);
     expect(movedOrderNode).toMatchObject({ x: 1_234, y: 432 });
     expect(movedOrderNode3D?.position).toEqual([24.68, 1.5, 8.64]);
-    expect(getWorkspaceView(project, 'core-containers')).toBe(original);
-    expect(getWorkspaceProjection3D(project, 'core-containers')).toBe(originalThreeD);
+    expect(getWorkspaceView(result.project, 'core-containers')).toBe(moved);
+    expect(getWorkspaceProjection3D(result.project, 'core-containers')).toBe(movedThreeD);
+    expect(getWorkspaceView(originalProject, 'core-containers')).toBe(original);
+    expect(getWorkspaceProjection3D(originalProject, 'core-containers')).toBe(originalThreeD);
     expect(originalOrderNode).toMatchObject({ x: 980, y: 255 });
     expect(originalOrderNode3D?.position).toEqual([19.6, 1.5, 5.1]);
   });
