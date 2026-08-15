@@ -109,6 +109,26 @@ describe('editor store', () => {
     unsubscribeAbsent();
   });
 
+  it('exposes a frozen read-only facade that still supports state and subscriptions', () => {
+    const store = createTestStore();
+    const initialState = store.getInitialState();
+    let notifications = 0;
+    const unsubscribe = store.subscribe(() => {
+      notifications += 1;
+    });
+
+    expect(Object.hasOwn(store, 'setState')).toBe(false);
+    expect('setState' in store).toBe(false);
+    expect(Object.isFrozen(store)).toBe(true);
+
+    store.getState().setMode('3d');
+
+    expect(store.getState().mode).toBe('3d');
+    expect(initialState.mode).toBe('2d');
+    expect(notifications).toBe(1);
+    unsubscribe();
+  });
+
   it('creates isolated instances with stable actions', () => {
     const first = createTestStore();
     const second = createTestStore();

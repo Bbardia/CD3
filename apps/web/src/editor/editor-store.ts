@@ -47,7 +47,9 @@ export interface CreateEditorStoreOptions {
   readonly mode?: EditorMode;
 }
 
-export type EditorStore = StoreApi<EditorState>;
+export type EditorStore = Readonly<
+  Pick<StoreApi<EditorState>, 'getState' | 'getInitialState' | 'subscribe'>
+>;
 
 interface NormalizedSelection {
   readonly ids: readonly ElementId[];
@@ -138,7 +140,7 @@ export function createEditorStore({
 }: CreateEditorStoreOptions): EditorStore {
   const validatedActiveViewId = requireActiveView(project, activeViewId);
 
-  return createStore<EditorState>()((set) => ({
+  const mutableStore = createStore<EditorState>()((set) => ({
     history: createCommandHistory(project),
     selectedElementIds: Object.freeze([]),
     primarySelectedElementId: undefined,
@@ -213,4 +215,10 @@ export function createEditorStore({
       );
     },
   }));
+
+  return Object.freeze({
+    getState: mutableStore.getState,
+    getInitialState: mutableStore.getInitialState,
+    subscribe: mutableStore.subscribe,
+  });
 }
