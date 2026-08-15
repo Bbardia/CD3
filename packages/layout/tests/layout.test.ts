@@ -2,18 +2,17 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ProjectSchema, type ProjectInput } from '@cd3/domain';
+import { ProjectSchema, applyCommand, type ProjectInput } from '@cd3/domain';
 import { generateSyntheticProject, northstarCommerceProject } from '@cd3/fixtures';
 import { describe, expect, it } from 'vitest';
 
 import {
   compileView,
-  createDeterministicLayoutPreview,
-  layoutViewWithElk,
   projectViewTo2D,
   projectViewTo3D,
   type ProjectedView2D,
 } from '../src/index.js';
+import { createDeterministicLayoutPreview, layoutViewWithElk } from '../src/elk.js';
 
 function projectionPolicyProject() {
   const input = structuredClone(northstarCommerceProject) as ProjectInput;
@@ -168,6 +167,26 @@ describe('compileView', () => {
 });
 
 describe('renderer-neutral projections', () => {
+  it('compiles and projects a readonly command result without an adapter or cast', () => {
+    const result = applyCommand(northstarCommerceProject, {
+      type: 'move-view-items',
+      viewId: 'system-context',
+      moves: [{ itemId: 'system-context-item-shopper', x: 125, y: 250 }],
+    });
+
+    const compiled = compileView(result.project, 'system-context');
+    const twoD = projectViewTo2D(compiled);
+    const threeD = projectViewTo3D(compiled, result.project.threeD.policy);
+
+    expect(twoD.nodes.find((node) => node.id === 'system-context-item-shopper')).toMatchObject({
+      x: 125,
+      y: 250,
+    });
+    expect(
+      threeD.nodes.find((node) => node.id === 'system-context-item-shopper')?.position,
+    ).toEqual([2.5, 0, 5]);
+  });
+
   it('keeps semantic IDs/counts aligned and derives 2D/3D coordinates and hierarchy elevation', () => {
     const compiled = compileView(northstarCommerceProject, 'core-containers');
     const twoD = projectViewTo2D(compiled);

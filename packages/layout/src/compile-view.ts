@@ -1,4 +1,4 @@
-import type { Element, ElementId, Project, Relationship } from '@cd3/domain';
+import type { DeepReadonly, Element, ElementId, ReadonlyProject, Relationship } from '@cd3/domain';
 
 import { cloneJsonValue, compareIds, deepFreeze } from './immutable.js';
 import type {
@@ -13,9 +13,9 @@ interface ResolvedEndpoint {
   readonly projected: boolean;
 }
 
-function semanticDepth(project: Project, element: Element): number {
+function semanticDepth(project: ReadonlyProject, element: DeepReadonly<Element>): number {
   let depth = 0;
-  let current: Element | undefined = element;
+  let current: DeepReadonly<Element> | undefined = element;
   const visited = new Set<string>();
 
   while (current !== undefined && 'parentId' in current && !visited.has(current.id)) {
@@ -29,7 +29,7 @@ function semanticDepth(project: Project, element: Element): number {
 }
 
 function resolveEndpoint(
-  project: Project,
+  project: ReadonlyProject,
   originalElementId: ElementId,
   itemByElementId: ReadonlyMap<string, CompiledViewItem>,
 ): ResolvedEndpoint | undefined {
@@ -42,7 +42,7 @@ function resolveEndpoint(
     if (visibleItem !== undefined) {
       return { item: visibleItem, projected: elementId !== originalElementId };
     }
-    const element: Element | undefined = Object.hasOwn(project.elements, elementId)
+    const element: DeepReadonly<Element> | undefined = Object.hasOwn(project.elements, elementId)
       ? project.elements[elementId]
       : undefined;
     elementId = element !== undefined && 'parentId' in element ? element.parentId : undefined;
@@ -52,7 +52,7 @@ function resolveEndpoint(
 
 function compileRelationship(
   viewId: string,
-  relationship: Relationship,
+  relationship: DeepReadonly<Relationship>,
   source: ResolvedEndpoint,
   target: ResolvedEndpoint,
 ): CompiledRelationship {
@@ -84,7 +84,7 @@ function compileRelationship(
  * represented by their original IDs. Hidden endpoints walk upward through `parentId`; relationships
  * with no visible endpoint or with a projected self-loop are omitted with a warning.
  */
-export function compileView(project: Project, viewId: string): CompiledView {
+export function compileView(project: ReadonlyProject, viewId: string): CompiledView {
   const view = Object.hasOwn(project.views, viewId) ? project.views[viewId] : undefined;
   if (view === undefined) {
     throw new RangeError(`View "${viewId}" does not exist in project "${project.id}".`);

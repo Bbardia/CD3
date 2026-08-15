@@ -5,7 +5,7 @@ import {
   type LayoutInput,
   type LayoutPreview,
   type LayoutPreviewOptions,
-} from '@cd3/layout';
+} from '@cd3/layout/elk';
 
 type WorkerRequest =
   | { readonly id: string; readonly kind: 'ping' }

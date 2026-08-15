@@ -35,7 +35,10 @@ function centerAnchor(node: ViewNode3D): Vector3Tuple {
 }
 
 /** Derives a plain-object 3D scene projection from authoritative 2D placement. */
-export function projectViewTo3D(compiled: CompiledView, policy: ThreeDPolicy): ProjectedView3D {
+export function projectViewTo3D(
+  compiled: CompiledView,
+  policy: Readonly<ThreeDPolicy>,
+): ProjectedView3D {
   const nodes = compiled.items.map((item): ViewNode3D => {
     const elevation = cleanNumber(
       Math.min(item.semanticDepth, MAX_ELEVATED_DEPTH) * policy.elevationStep,
