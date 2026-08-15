@@ -1,20 +1,31 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { type ComponentProps } from 'react';
+import { type ComponentProps, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { workerProbeMock } = vi.hoisted(() => ({ workerProbeMock: vi.fn() }));
+import type * as WorkspaceModule from './workspace';
+
+const { projection3DMock, workerProbeMock } = vi.hoisted(() => ({
+  projection3DMock: vi.fn(),
+  workerProbeMock: vi.fn(),
+}));
 
 vi.mock('./components/Diagram2D', () => ({
-  Diagram2D: ({ onSelect, projection, selectedElementId }: MockDiagram2DProps) => (
-    <section aria-label="Mock 2D projection" data-testid="diagram-2d">
-      <span data-testid="2d-view-id">{projection.viewId}</span>
-      <span data-testid="2d-selection">{selectedElementId ?? 'none'}</span>
-      <button type="button" onClick={() => onSelect('order-service')}>
-        Select Order Service in 2D
-      </button>
-    </section>
-  ),
+  Diagram2D: ({ onSelect, projection, selectedElementId }: MockDiagram2DProps) => {
+    const orderService = projection.nodes.find((node) => node.elementId === 'order-service');
+    return (
+      <section aria-label="Mock 2D projection" data-testid="diagram-2d">
+        <span data-testid="2d-view-id">{projection.viewId}</span>
+        <span data-testid="2d-selection">{selectedElementId ?? 'none'}</span>
+        <span data-testid="2d-order-service-position">
+          {orderService === undefined ? 'absent' : `${orderService.x},${orderService.y}`}
+        </span>
+        <button type="button" onClick={() => onSelect('order-service')}>
+          Select Order Service in 2D
+        </button>
+      </section>
+    );
+  },
 }));
 
 vi.mock('./components/SpatialDiagram', () => ({
@@ -33,20 +44,60 @@ vi.mock('./workers/elk-worker-client', () => ({
   probeElkLayoutWorker: workerProbeMock,
 }));
 
+vi.mock('./workspace', async (importOriginal) => {
+  const actual = await importOriginal<typeof WorkspaceModule>();
+  projection3DMock.mockImplementation(
+    (
+      activeProject: Parameters<typeof actual.getWorkspaceProjection3D>[0],
+      viewId: Parameters<typeof actual.getWorkspaceProjection3D>[1],
+    ) => actual.getWorkspaceProjection3D(activeProject, viewId),
+  );
+  return { ...actual, getWorkspaceProjection3D: projection3DMock };
+});
+
 import { App } from './App';
 import type { Diagram2D } from './components/Diagram2D';
 import type { SpatialDiagram } from './components/SpatialDiagram';
+import { EditorStoreProvider, useEditorStore } from './editor/EditorStoreProvider';
+import { project, workspaceViewIds } from './workspace';
 
 type MockDiagram2DProps = ComponentProps<typeof Diagram2D>;
 type MockSpatialDiagramProps = ComponentProps<typeof SpatialDiagram>;
 
+function renderApp(children: ReactNode = <App />) {
+  return render(
+    <EditorStoreProvider initialProject={project} initialActiveViewId={workspaceViewIds[1]}>
+      {children}
+    </EditorStoreProvider>,
+  );
+}
+
+function CommandHarness() {
+  const execute = useEditorStore((state) => state.execute);
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        execute({
+          type: 'move-view-items',
+          viewId: 'core-containers',
+          moves: [{ itemId: 'core-containers-item-orders', x: 1_234, y: 432 }],
+        })
+      }
+    >
+      Move Order Service through store
+    </button>
+  );
+}
+
 describe('CD3 workspace shell', () => {
   beforeEach(() => {
     workerProbeMock.mockReset().mockResolvedValue(false);
+    projection3DMock.mockClear();
   });
 
   it('renders an accessible read-only application shell and mode/view controls', () => {
-    render(<App />);
+    renderApp();
 
     expect(screen.getByRole('banner')).toHaveTextContent('CD3');
     expect(screen.getByRole('banner')).toHaveTextContent('Northstar Commerce');
@@ -75,7 +126,7 @@ describe('CD3 workspace shell', () => {
 
   it('shares selection by stable semantic ID across explorer, 2D, 3D, and inspector', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
 
     await user.click(screen.getByRole('button', { name: 'Select Order Service in 2D' }));
 
@@ -101,7 +152,7 @@ describe('CD3 workspace shell', () => {
 
   it('preserves semantic selection while switching compiled views and clears it with Escape', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
 
     await user.click(screen.getByRole('treeitem', { name: 'Constellation Payments, System' }));
     await user.click(screen.getByRole('button', { name: /Order Service — Components/ }));
@@ -124,8 +175,37 @@ describe('CD3 workspace shell', () => {
   it('reports the layout worker as unavailable when its probe rejects', async () => {
     workerProbeMock.mockRejectedValueOnce(new Error('worker startup failed'));
 
-    render(<App />);
+    renderApp();
 
     expect(await screen.findByText('Layout worker unavailable')).toBeVisible();
+  });
+
+  it('does not derive a 3D projection until the store mode switches to 3D', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    expect(projection3DMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '3D spatial view' }));
+
+    expect(await screen.findByTestId('diagram-3d')).toBeVisible();
+    expect(projection3DMock).toHaveBeenCalledOnce();
+    expect(projection3DMock).toHaveBeenCalledWith(project, 'core-containers');
+  });
+
+  it('renders a new project projection after a command executes through the editor store', async () => {
+    const user = userEvent.setup();
+    renderApp(
+      <>
+        <App />
+        <CommandHarness />
+      </>,
+    );
+
+    expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent('980,255');
+
+    await user.click(screen.getByRole('button', { name: 'Move Order Service through store' }));
+
+    expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent('1234,432');
   });
 });

@@ -1,8 +1,14 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import type { Element, ElementId, Relationship } from '@cd3/domain';
+import type { DeepReadonly, Element, ElementId, ReadonlyProject, Relationship } from '@cd3/domain';
 
 import { Diagram2D } from './components/Diagram2D';
-import { getWorkspaceView, project, workspaceViewIds, type WorkspaceViewId } from './workspace';
+import { useEditorStore } from './editor/EditorStoreProvider';
+import {
+  getWorkspaceProjection3D,
+  getWorkspaceView,
+  workspaceViewIds,
+  type WorkspaceViewId,
+} from './workspace';
 import { probeElkLayoutWorker } from './workers/elk-worker-client';
 
 const elementKindLabel = {
@@ -26,41 +32,47 @@ const elementGroupLabel: Readonly<Record<Element['kind'], string>> = {
   softwareSystem: 'Systems',
 };
 
-type ProjectionMode = '2d' | '3d';
-
 const SpatialDiagram = lazy(async () => {
   const module = await import('./components/SpatialDiagram');
   return { default: module.SpatialDiagram };
 });
 
-function ownElement(elementId: string): Element | undefined {
-  return Object.hasOwn(project.elements, elementId) ? project.elements[elementId] : undefined;
+function ownElement(
+  activeProject: ReadonlyProject,
+  elementId: string,
+): DeepReadonly<Element> | undefined {
+  return Object.hasOwn(activeProject.elements, elementId)
+    ? activeProject.elements[elementId]
+    : undefined;
 }
 
 function relationshipCounterparty(
-  relationship: Relationship,
+  activeProject: ReadonlyProject,
+  relationship: DeepReadonly<Relationship>,
   selectedId: string,
-): Element | undefined {
+): DeepReadonly<Element> | undefined {
   const counterpartyId =
     relationship.sourceId === selectedId ? relationship.targetId : relationship.sourceId;
-  return ownElement(counterpartyId);
+  return ownElement(activeProject, counterpartyId);
 }
 
 function ModelExplorer({
+  project,
   selectedElementId,
   selectedViewId,
   onSelectElement,
   onSelectView,
 }: {
-  readonly selectedElementId: string | undefined;
+  readonly project: ReadonlyProject;
+  readonly selectedElementId: ElementId | undefined;
   readonly selectedViewId: WorkspaceViewId;
-  readonly onSelectElement: (elementId: string) => void;
+  readonly onSelectElement: (elementId: ElementId) => void;
   readonly onSelectView: (viewId: WorkspaceViewId) => void;
 }) {
   const elements = useMemo(
     () =>
       Object.values(project.elements).sort((left, right) => left.name.localeCompare(right.name)),
-    [],
+    [project],
   );
 
   return (
@@ -159,13 +171,16 @@ function ModelExplorer({
 }
 
 function Inspector({
+  project,
   selectedElementId,
   onClear,
 }: {
-  readonly selectedElementId: string | undefined;
+  readonly project: ReadonlyProject;
+  readonly selectedElementId: ElementId | undefined;
   readonly onClear: () => void;
 }) {
-  const element = selectedElementId === undefined ? undefined : ownElement(selectedElementId);
+  const element =
+    selectedElementId === undefined ? undefined : ownElement(project, selectedElementId);
   const relationships = useMemo(
     () =>
       selectedElementId === undefined
@@ -175,7 +190,7 @@ function Inspector({
               relationship.sourceId === selectedElementId ||
               relationship.targetId === selectedElementId,
           ),
-    [selectedElementId],
+    [project, selectedElementId],
   );
 
   return (
@@ -229,7 +244,7 @@ function Inspector({
               <ul className="relationship-list">
                 {relationships.map((relationship) => {
                   const outgoing = relationship.sourceId === element.id;
-                  const counterparty = relationshipCounterparty(relationship, element.id);
+                  const counterparty = relationshipCounterparty(project, relationship, element.id);
                   return (
                     <li key={relationship.id}>
                       <span className={`relationship-direction${outgoing ? ' is-outgoing' : ''}`}>
@@ -272,25 +287,41 @@ function Inspector({
 }
 
 export function App() {
-  const [viewId, setViewId] = useState<WorkspaceViewId>('core-containers');
-  const [mode, setMode] = useState<ProjectionMode>('2d');
-  const [selectedElementId, setSelectedElementId] = useState<ElementId | undefined>();
+  const project = useEditorStore((state) => state.history.project);
+  const viewId = useEditorStore((state) => state.activeViewId);
+  const mode = useEditorStore((state) => state.mode);
+  const selectedElementId = useEditorStore((state) => state.primarySelectedElementId);
+  const setViewId = useEditorStore((state) => state.setActiveView);
+  const setMode = useEditorStore((state) => state.setMode);
+  const setSelection = useEditorStore((state) => state.setSelection);
   const [layoutWorkerState, setLayoutWorkerState] = useState<'checking' | 'ready' | 'unavailable'>(
     'checking',
   );
-  const workspaceView = useMemo(() => getWorkspaceView(viewId), [viewId]);
+  const workspaceView = useMemo(() => getWorkspaceView(project, viewId), [project, viewId]);
+  const projection3D = useMemo(
+    () => (mode === '3d' ? getWorkspaceProjection3D(project, viewId) : undefined),
+    [mode, project, viewId],
+  );
   const selectedElement =
-    selectedElementId === undefined ? undefined : ownElement(selectedElementId);
+    selectedElementId === undefined ? undefined : ownElement(project, selectedElementId);
+  const selectElement = (elementId: string | undefined) => {
+    if (elementId === undefined) {
+      setSelection([]);
+      return;
+    }
+    const selectedId = elementId as ElementId;
+    setSelection([selectedId], selectedId);
+  };
 
   useEffect(() => {
     const clearOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setSelectedElementId(undefined);
+        setSelection([]);
       }
     };
     window.addEventListener('keydown', clearOnEscape);
     return () => window.removeEventListener('keydown', clearOnEscape);
-  }, []);
+  }, [setSelection]);
 
   useEffect(() => {
     let active = true;
@@ -321,7 +352,7 @@ export function App() {
           </span>
           <span className="header-divider" aria-hidden="true" />
           <div className="breadcrumb">
-            <strong>Northstar Commerce</strong>
+            <strong>{project.name}</strong>
             <span>/</span>
             <span>{workspaceView.compiled.name}</span>
           </div>
@@ -338,9 +369,10 @@ export function App() {
       </header>
 
       <ModelExplorer
+        project={project}
         selectedElementId={selectedElementId}
         selectedViewId={viewId}
-        onSelectElement={(elementId) => setSelectedElementId(elementId as ElementId)}
+        onSelectElement={selectElement}
         onSelectView={setViewId}
       />
 
@@ -383,9 +415,9 @@ export function App() {
             <Diagram2D
               projection={workspaceView.twoD}
               selectedElementId={selectedElementId}
-              onSelect={(elementId) => setSelectedElementId(elementId as ElementId | undefined)}
+              onSelect={selectElement}
             />
-          ) : (
+          ) : projection3D === undefined ? null : (
             <Suspense
               fallback={
                 <section className="projection-loading" aria-label="Preparing 3D projection">
@@ -395,9 +427,9 @@ export function App() {
               }
             >
               <SpatialDiagram
-                projection={workspaceView.threeD}
+                projection={projection3D}
                 selectedElementId={selectedElementId}
-                onSelect={(elementId) => setSelectedElementId(elementId as ElementId | undefined)}
+                onSelect={selectElement}
               />
             </Suspense>
           )}
@@ -405,8 +437,9 @@ export function App() {
       </main>
 
       <Inspector
+        project={project}
         selectedElementId={selectedElementId}
-        onClear={() => setSelectedElementId(undefined)}
+        onClear={() => setSelection([])}
       />
 
       <footer className="status-strip" role="status" aria-live="polite">

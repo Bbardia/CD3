@@ -17,7 +17,7 @@ vi.mock('@react-three/drei', () => ({
 vi.mock('three', () => ({ OrthographicCamera: class OrthographicCamera {} }));
 
 import { SpatialDiagram, SpatialErrorBoundary } from './SpatialDiagram';
-import { getWorkspaceView } from '../workspace';
+import { getWorkspaceProjection3D, project } from '../workspace';
 
 describe('SpatialDiagram fallback', () => {
   beforeEach(() => canvasMock.mockReset().mockReturnValue(null));
@@ -28,7 +28,7 @@ describe('SpatialDiagram fallback', () => {
 
     render(
       <SpatialDiagram
-        projection={getWorkspaceView('core-containers').threeD}
+        projection={getWorkspaceProjection3D(project, 'core-containers')}
         selectedElementId={undefined}
         onSelect={() => undefined}
       />,
@@ -44,7 +44,7 @@ describe('SpatialDiagram fallback', () => {
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       getExtension: () => ({ loseContext }),
     } as unknown as WebGLRenderingContext);
-    const projection = getWorkspaceView('core-containers').threeD;
+    const projection = getWorkspaceProjection3D(project, 'core-containers');
 
     const { rerender } = render(
       <SpatialDiagram
