@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { DeepReadonly, Element, ElementId, ReadonlyProject, Relationship } from '@cd3/domain';
 
 import { Diagram2D } from './components/Diagram2D';
+import { CommandErrorBanner, EditorToolbar } from './components/EditorToolbar';
 import { useEditorStore } from './editor/EditorStoreProvider';
+import { isTextEntryTarget } from './editor/keyboard';
 import {
   getWorkspaceProjection3D,
   getWorkspaceView,
@@ -291,6 +293,9 @@ export function App() {
   const viewId = useEditorStore((state) => state.activeViewId);
   const mode = useEditorStore((state) => state.mode);
   const selectedElementId = useEditorStore((state) => state.primarySelectedElementId);
+  // Undone edits leave the project identical to the loaded fixture, so only the undo stack proves
+  // the in-memory document has diverged from what was opened.
+  const hasLocalEdits = useEditorStore((state) => state.history.undoStack.length > 0);
   const setViewId = useEditorStore((state) => state.setActiveView);
   const setMode = useEditorStore((state) => state.setMode);
   const setSelection = useEditorStore((state) => state.setSelection);
@@ -315,7 +320,7 @@ export function App() {
 
   useEffect(() => {
     const clearOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !isTextEntryTarget(event.target)) {
         setSelection([]);
       }
     };
@@ -358,8 +363,9 @@ export function App() {
           </div>
         </div>
         <div className="header-actions">
-          <span className="save-state">
-            <span aria-hidden="true" /> Sample fixture · read-only
+          <span className={`save-state${hasLocalEdits ? ' save-state--dirty' : ''}`}>
+            <span aria-hidden="true" />{' '}
+            {hasLocalEdits ? 'Local edits · not persisted' : 'Sample fixture · local session'}
           </span>
           <span className="read-only-badge">Read-only slice</span>
           <button type="button" className="icon-button" aria-label="Workspace menu">
@@ -386,6 +392,7 @@ export function App() {
             </div>
           </div>
           <div className="stage-tools">
+            <EditorToolbar />
             <div className="mode-switch" aria-label="Projection mode">
               <button
                 type="button"
@@ -409,6 +416,8 @@ export function App() {
             </span>
           </div>
         </div>
+
+        <CommandErrorBanner />
 
         <div className="stage-canvas">
           {mode === '2d' ? (

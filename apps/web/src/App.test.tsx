@@ -121,7 +121,7 @@ describe.sequential('CD3 workspace shell', () => {
 
     expect(screen.getByRole('banner')).toHaveTextContent('CD3');
     expect(screen.getByRole('banner')).toHaveTextContent('Northstar Commerce');
-    expect(screen.getByText('Sample fixture · read-only')).toBeVisible();
+    expect(screen.getByText('Sample fixture · local session')).toBeVisible();
     expect(screen.getByRole('navigation', { name: 'Model explorer' })).toBeVisible();
     expect(screen.getByRole('main')).toBeVisible();
     expect(screen.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
@@ -214,5 +214,46 @@ describe.sequential('CD3 workspace shell', () => {
     await user.click(screen.getByRole('button', { name: 'Move Order Service through store' }));
 
     expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent('1234,432');
+  });
+
+  it('reports local edits only while the project differs from the loaded fixture', async () => {
+    const user = userEvent.setup();
+    renderApp(
+      <>
+        <App />
+        <CommandHarness />
+      </>,
+    );
+
+    expect(screen.getByText('Sample fixture · local session')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Move Order Service through store' }));
+
+    expect(screen.getByText('Local edits · not persisted')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: /^Undo/ }));
+
+    expect(screen.getByText('Sample fixture · local session')).toBeVisible();
+  });
+
+  it('keeps Escape from clearing selection while the user is typing', async () => {
+    const user = userEvent.setup();
+    renderApp(
+      <>
+        <App />
+        <input aria-label="Draft field" />
+      </>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select Order Service in 2D' }));
+    const draftField = screen.getByRole('textbox', { name: 'Draft field' });
+    await user.click(draftField);
+    fireEvent.keyDown(draftField, { key: 'Escape' });
+
+    expect(screen.getByTestId('2d-selection')).toHaveTextContent('order-service');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.getByTestId('2d-selection')).toHaveTextContent('none');
   });
 });
