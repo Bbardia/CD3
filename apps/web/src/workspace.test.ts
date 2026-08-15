@@ -10,6 +10,27 @@ const expectedCounts = {
 } as const;
 const parityProject = createCommandHistory(project).project;
 
+function proxyFrozenTarget<T extends object>(backing: T): T {
+  return new Proxy(Object.freeze({}), {
+    get: (_target, property) => Reflect.get(backing, property),
+  }) as T;
+}
+
+function freezeDataGraph<T>(value: T, visited = new Set<object>()): T {
+  if (value === null || typeof value !== 'object' || visited.has(value)) {
+    return value;
+  }
+
+  visited.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+    if (descriptor !== undefined && 'value' in descriptor) {
+      freezeDataGraph(descriptor.value, visited);
+    }
+  }
+  return Object.freeze(value);
+}
+
 describe('workspace view projections', () => {
   it.each(Object.entries(expectedCounts))(
     'keeps compiler, 2D, and separately derived 3D semantic IDs in parity for %s',
@@ -76,6 +97,35 @@ describe('workspace view projections', () => {
     expect(updatedOrderNode).toMatchObject({ x: 1_234, y: 432 });
   });
 
+  it('recomputes a proxy-backed same-identity 2D projection after its backing placement changes', () => {
+    const backingProject = structuredClone(project);
+    const proxyProject = proxyFrozenTarget(backingProject);
+    const backingView = backingProject.views['core-containers'];
+    if (backingView === undefined) {
+      throw new Error('The fixture must include the core-containers view.');
+    }
+    const first = getWorkspaceView(proxyProject, 'core-containers');
+    const firstOrderNode = first.twoD.nodes.find(
+      (node) => node.id === 'core-containers-item-orders',
+    );
+
+    backingView.placements['core-containers-item-orders'] = {
+      x: 1_234,
+      y: 432,
+      width: 240,
+      height: 130,
+    };
+
+    const updated = getWorkspaceView(proxyProject, 'core-containers');
+    const updatedOrderNode = updated.twoD.nodes.find(
+      (node) => node.id === 'core-containers-item-orders',
+    );
+
+    expect(updated).not.toBe(first);
+    expect(firstOrderNode).toMatchObject({ x: 980, y: 255 });
+    expect(updatedOrderNode).toMatchObject({ x: 1_234, y: 432 });
+  });
+
   it('recomputes a shallow-root-frozen same-identity 3D projection after nested inputs change', () => {
     const shallowFrozenProject = Object.freeze(structuredClone(project));
     const shallowFrozenView = shallowFrozenProject.views['core-containers'];
@@ -95,6 +145,41 @@ describe('workspace view projections', () => {
     shallowFrozenProject.threeD.policy.elevationStep = 2.25;
 
     const updated = getWorkspaceProjection3D(shallowFrozenProject, 'core-containers');
+    const updatedOrderNode = updated.nodes.find(
+      (node) => node.id === 'core-containers-item-orders',
+    );
+
+    expect(updated).not.toBe(first);
+    expect(first.policy).toMatchObject({ coordinateScale: 0.02, elevationStep: 1.5 });
+    expect(firstOrderNode?.position).toEqual([19.6, 1.5, 5.1]);
+    expect(updated.policy).toMatchObject({ coordinateScale: 0.03, elevationStep: 2.25 });
+    expect(updatedOrderNode?.position).toEqual([37.02, 2.25, 12.96]);
+  });
+
+  it('recomputes a nested-proxy-backed same-identity 3D projection after backing inputs change', () => {
+    const backingProject = structuredClone(project);
+    const proxyBackedProject = structuredClone(project);
+    const backingView = backingProject.views['core-containers'];
+    if (backingView === undefined) {
+      throw new Error('The fixture must include the core-containers view.');
+    }
+    proxyBackedProject.views['core-containers'] = proxyFrozenTarget(backingView);
+    proxyBackedProject.threeD = proxyFrozenTarget(backingProject.threeD);
+    freezeDataGraph(proxyBackedProject);
+
+    const first = getWorkspaceProjection3D(proxyBackedProject, 'core-containers');
+    const firstOrderNode = first.nodes.find((node) => node.id === 'core-containers-item-orders');
+
+    backingView.placements['core-containers-item-orders'] = {
+      x: 1_234,
+      y: 432,
+      width: 240,
+      height: 130,
+    };
+    backingProject.threeD.policy.coordinateScale = 0.03;
+    backingProject.threeD.policy.elevationStep = 2.25;
+
+    const updated = getWorkspaceProjection3D(proxyBackedProject, 'core-containers');
     const updatedOrderNode = updated.nodes.find(
       (node) => node.id === 'core-containers-item-orders',
     );

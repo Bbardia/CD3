@@ -29,6 +29,12 @@ function isDeeplyFrozenProject(activeProject: ReadonlyProject): boolean {
     return true;
   }
 
+  try {
+    structuredClone(activeProject);
+  } catch {
+    return false;
+  }
+
   const visited = new Set<object>();
   const isDeeplyFrozenValue = (value: unknown): boolean => {
     if (value === null || typeof value !== 'object') {
