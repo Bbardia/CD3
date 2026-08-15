@@ -18,7 +18,7 @@ For schema version 1, 2D view placement is authoritative and 3D is derived:
 - relationships connect derived node anchors;
 - optional camera bookmarks are view metadata, not semantic model data;
 - the default camera is orthographic with an isometric orientation;
-- perspective projection is available as a user-controlled viewing option.
+- perspective projection and split-mode presentation are deferred to later production interaction work.
 
 An ELK adapter may produce 2D placements when a view lacks them, but its output still enters the same authoritative 2D placement contract before 3D derivation.
 

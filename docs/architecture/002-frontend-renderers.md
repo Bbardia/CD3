@@ -13,11 +13,12 @@ The frontend uses React 19 with Vite:
 
 - React Flow renders the read-only 2D projection;
 - React Three Fiber and Three.js render procedural platforms, blocks, and relationship lines;
-- Drei provides orthographic/perspective cameras and orbit controls;
+- Drei provides the foundation's orthographic camera and orbit controls;
 - shared React state stores the selected semantic element and active view;
 - both renderer adapters consume the same pure compiled view;
 - rendering is on demand rather than a continuous animation loop;
-- a visible non-WebGL fallback preserves access to the model and 2D canvas.
+- a visible non-WebGL fallback preserves access to the model and 2D canvas;
+- split-mode presentation and perspective camera controls are deferred to later production interaction work.
 
 The visual design is original: light neutral panels, restrained teal/blue/coral semantics, subtle technical grid texture, and typography/layout tailored to an architecture workspace. No proprietary code, assets, examples, or trade dress are copied.
 
@@ -27,3 +28,4 @@ The visual design is original: light neutral panels, restrained teal/blue/coral 
 - Compiler tests provide parity guarantees without mounting either renderer.
 - Three.js increases bundle size, so the 3D scene should be lazy-loadable as the product grows.
 - Browser and WebGL behavior require explicit smoke/fallback tests.
+- Representative-Mac performance profiling remains pending; this decision records no performance measurements.

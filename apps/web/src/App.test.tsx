@@ -50,7 +50,7 @@ describe('CD3 workspace shell', () => {
 
     expect(screen.getByRole('banner')).toHaveTextContent('CD3');
     expect(screen.getByRole('banner')).toHaveTextContent('Northstar Commerce');
-    expect(screen.getByText('Saved locally')).toBeVisible();
+    expect(screen.getByText('Sample fixture · read-only')).toBeVisible();
     expect(screen.getByRole('navigation', { name: 'Model explorer' })).toBeVisible();
     expect(screen.getByRole('main')).toBeVisible();
     expect(screen.getByRole('complementary', { name: 'Inspector' })).toBeVisible();

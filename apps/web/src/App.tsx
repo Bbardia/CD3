@@ -328,7 +328,7 @@ export function App() {
         </div>
         <div className="header-actions">
           <span className="save-state">
-            <span aria-hidden="true" /> Saved locally
+            <span aria-hidden="true" /> Sample fixture · read-only
           </span>
           <span className="read-only-badge">Read-only slice</span>
           <button type="button" className="icon-button" aria-label="Workspace menu">

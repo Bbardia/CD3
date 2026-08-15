@@ -5,7 +5,7 @@
 
 ## Context
 
-The first CD3 deployment is a single local Raspberry Pi. It needs transparent, portable persistence without an operational database dependency. Schema evolution and validation must be explicit from the beginning.
+CD3 is built on a Raspberry Pi but is intended to run as a single local Mac application with loopback-only services. It needs transparent, portable persistence without an operational database dependency. Schema evolution and validation must be explicit from the beginning.
 
 ## Decision
 
