@@ -8,6 +8,12 @@ importers:
 
   .:
     devDependencies:
+      '@cd3/domain':
+        specifier: workspace:*
+        version: link:packages/domain
+      '@cd3/layout':
+        specifier: workspace:*
+        version: link:packages/layout
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.8.1(supports-color@10.2.2))

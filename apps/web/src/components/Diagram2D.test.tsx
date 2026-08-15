@@ -131,6 +131,28 @@ describe('Diagram2D drag editing', () => {
     expect(onMoveItems).not.toHaveBeenCalled();
   });
 
+  it('renders once per pointer-move batch and never amplifies them', () => {
+    renderDiagram();
+    const before = reactFlowPropsMock.mock.calls.length;
+
+    for (let step = 0; step < 5; step += 1) {
+      dragTo(lowerItemId, 400 + step, 300 + step);
+    }
+
+    // One render per change. Any cascade — a projection recompute, an effect writing state back,
+    // a new node identity for untouched nodes — would show up here as extra renders.
+    expect(reactFlowPropsMock.mock.calls.length - before).toBe(5);
+  });
+
+  it('leaves every untouched node object identical during a drag', () => {
+    renderDiagram();
+    const untouched = nodeById(higherItemId);
+
+    dragTo(lowerItemId, 640, 320);
+
+    expect(nodeById(higherItemId)).toBe(untouched);
+  });
+
   it('emits exactly one command when the pointer is released', () => {
     const { onMoveItems } = renderDiagram();
 

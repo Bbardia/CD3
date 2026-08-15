@@ -28,4 +28,14 @@ The visual design is original: light neutral panels, restrained teal/blue/coral 
 - Compiler tests provide parity guarantees without mounting either renderer.
 - Three.js increases bundle size, so the 3D scene should be lazy-loadable as the product grows.
 - Browser and WebGL behavior require explicit smoke/fallback tests.
-- Representative-Mac performance profiling remains pending; this decision records no performance measurements.
+- Representative-Mac performance profiling remains pending. A first baseline now exists, measured on
+  a Raspberry Pi 5 under Node with no browser, and is recorded in
+  [`docs/performance/editor-baseline.md`](../performance/editor-baseline.md). It sets no target.
+- The renderers are not the first bottleneck. Compiling a view and projecting it to 2D costs about
+  an eighth of one accepted drop at 1,000 elements; the drop is dominated by whole-document
+  validation inside `applyCommand`, which is paid twice per command. The 3D projection costs about
+  the same as the 2D one and runs only when 3D mode is requested.
+- That cost scales with document size rather than with how much moved, which is the measured reason
+  a group drag must remain exactly one command.
+- Pointer movement stays off that path entirely: drag previews are transient renderer state and
+  emit no command until release.
