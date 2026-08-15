@@ -1,6 +1,7 @@
 dist
 coverage
 docs
+.hermes
 node_modules
 pnpm-lock.yaml
 playwright-report
