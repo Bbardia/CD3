@@ -1,13 +1,108 @@
-import { Component, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type { ReactNode } from 'react';
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Html, Line, OrbitControls, RoundedBox } from '@react-three/drei';
 import { OrthographicCamera } from 'three';
+import type { Mesh } from 'three';
+import type { ViewItemMove } from '@cd3/domain';
 import type { ProjectedView3D, ViewNode3D } from '@cd3/layout';
+
+import { PALETTE_MIME } from '../editor/palette';
+import { movesCollide } from '../editor/placement';
+import { SpatialModel } from './spatial-models';
 
 export interface SpatialDiagramProps {
   readonly projection: ProjectedView3D;
   readonly selectedElementId: string | undefined;
+  /** Every selected element, including the primary. Drives which blocks drag together. */
+  readonly selectedElementIds: readonly string[];
   readonly onSelect: (elementId: string | undefined) => void;
+  readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
+  /** Palette drop, reported in 2D placement space so the caller stays renderer-neutral. */
+  readonly onDropPaletteEntry: (entryId: string, placement: { x: number; y: number }) => void;
+  /** Connect tool: blocks stop dragging so a click reads as "pick an endpoint" and nothing else. */
+  readonly connecting: boolean;
+  /** Bumped when the caller adds something off-screen and wants the camera to show it. */
+  readonly revealSignal: number;
+}
+
+/** Ground-plane offset applied to a block while a drag is in flight, in world units. */
+type GroundOffset = readonly [number, number];
+
+type WorldPoint = [number, number, number];
+
+const NO_OFFSET: GroundOffset = [0, 0];
+/** Ink, not the primary blue: software systems are already blue. */
+const SELECTION_COLOR = '#182126';
+/** World units a flow pulse travels per second. */
+const FLOW_SPEED = 3;
+
+/**
+ * Closed rectangle framing the top face of a block, used to outline the selected element. It rides
+ * above the cap rather than around the base, where the block's own volume would occlude it.
+ */
+function footprint(center: WorldPoint, size: ViewNode3D['size']): WorldPoint[] {
+  const x = size[0] / 2 + 0.1;
+  const z = size[2] / 2 + 0.1;
+  const y = center[1] + size[1] / 2 + 0.09;
+  return [
+    [center[0] - x, y, center[2] - z],
+    [center[0] + x, y, center[2] - z],
+    [center[0] + x, y, center[2] + z],
+    [center[0] - x, y, center[2] + z],
+    [center[0] - x, y, center[2] - z],
+  ];
+}
+
+/**
+ * R3F replaces `target` with an object-level pointer capture API so a drag keeps receiving events
+ * once the ray leaves the block, but its types still describe the DOM target it shadows.
+ */
+function captureTarget(event: ThreeEvent<PointerEvent>): {
+  setPointerCapture: (pointerId: number) => void;
+  releasePointerCapture: (pointerId: number) => void;
+} {
+  return event.target as unknown as {
+    setPointerCapture: (pointerId: number) => void;
+    releasePointerCapture: (pointerId: number) => void;
+  };
+}
+
+/**
+ * Turns a finished ground-plane drag into 2D move commands: placement stays authoritative, so the
+ * world offset is converted back through the projection scale.
+ */
+export function movesFromDrag(
+  nodes: ProjectedView3D['nodes'],
+  draggedItemIds: readonly string[],
+  offset: GroundOffset,
+  coordinateScale: number,
+): readonly ViewItemMove[] {
+  const dragged = new Set(draggedItemIds);
+  return nodes
+    .filter((node) => dragged.has(node.viewItemId))
+    .map((node) => ({
+      itemId: node.viewItemId,
+      x: Math.round(node.placement2D.x + offset[0] / coordinateScale),
+      y: Math.round(node.placement2D.y + offset[1] / coordinateScale),
+    }));
+}
+
+/** Where a pointer ray crosses the horizontal plane at `y`, or null when it runs parallel to it. */
+export function groundPoint(ray: ThreeEvent<PointerEvent>['ray'], y: number): GroundOffset | null {
+  if (Math.abs(ray.direction.y) < 1e-6) {
+    return null;
+  }
+  const distance = (y - ray.origin.y) / ray.direction.y;
+  return [ray.origin.x + ray.direction.x * distance, ray.origin.z + ray.direction.z * distance];
 }
 
 declare global {
@@ -16,11 +111,13 @@ declare global {
   }
 }
 
-const kindColor = {
-  component: '#6b5aad',
-  container: '#0f7c72',
-  person: '#a65c16',
-  softwareSystem: '#315fc4',
+// The tile carries the C4 kind, the prop carries the technology. A muted cap keeps the two
+// readable at once instead of a saturated slab fighting the object standing on it.
+const kindCapColor = {
+  component: '#978cc6',
+  container: '#57a39c',
+  person: '#c18d5c',
+  softwareSystem: '#6f8fd6',
 } as const;
 
 function supportsWebGL(): boolean {
@@ -79,6 +176,141 @@ function FrameProbe() {
   return null;
 }
 
+interface FlowLine {
+  readonly id: string;
+  readonly points: WorldPoint[];
+  readonly color: string;
+  readonly dashed: boolean;
+  readonly emphasized: boolean;
+  readonly head: WorldPoint;
+}
+
+/** Point `distance` world units along a polyline, clamped to its end. */
+export function pointAlong(points: readonly WorldPoint[], distance: number): WorldPoint {
+  let remaining = distance;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const from = points[index] as WorldPoint;
+    const to = points[index + 1] as WorldPoint;
+    const length = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+    if (remaining <= length || index === points.length - 2) {
+      const ratio = length === 0 ? 0 : Math.min(1, remaining / length);
+      return [
+        from[0] + (to[0] - from[0]) * ratio,
+        from[1] + (to[1] - from[1]) * ratio,
+        from[2] + (to[2] - from[2]) * ratio,
+      ];
+    }
+    remaining -= length;
+  }
+  return points[0] ?? [0, 0, 0];
+}
+
+export function polylineLength(points: readonly WorldPoint[]): number {
+  let total = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const from = points[index] as WorldPoint;
+    const to = points[index + 1] as WorldPoint;
+    total += Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+  }
+  return total;
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia !== undefined
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+}
+
+/** Dots travelling source to target, so the direction of every relationship is readable at a glance. */
+function FlowPulses({ lines }: { readonly lines: readonly FlowLine[] }) {
+  const { invalidate } = useThree();
+  const pulses = useRef<(Mesh | null)[]>([]);
+
+  useFrame((state) => {
+    const elapsed = state.clock.elapsedTime;
+    lines.forEach((line, index) => {
+      const pulse = pulses.current[index];
+      if (pulse === null || pulse === undefined) {
+        return;
+      }
+      const length = polylineLength(line.points);
+      // A constant speed plus a per-edge phase keeps long hops slower and stops the lockstep look.
+      const travelled = length === 0 ? 0 : (elapsed * FLOW_SPEED + index * 1.7) % length;
+      const [x, y, z] = pointAlong(line.points, travelled);
+      pulse.position.set(x, y, z);
+    });
+    // The canvas renders on demand, so an in-flight animation has to keep asking for frames.
+    invalidate();
+  });
+
+  return (
+    <>
+      {lines.map((line, index) => (
+        <mesh
+          key={line.id}
+          ref={(mesh) => {
+            pulses.current[index] = mesh;
+          }}
+        >
+          <sphereGeometry args={[0.1, 12, 12]} />
+          <meshBasicMaterial color={line.color} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+/** Turns an HTML drag and drop onto the canvas into a point on the ground plane. */
+function PaletteDropTarget({
+  coordinateScale,
+  onDrop,
+}: {
+  readonly coordinateScale: number;
+  readonly onDrop: SpatialDiagramProps['onDropPaletteEntry'];
+}) {
+  const { camera, gl, raycaster } = useThree();
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const carriesEntry = (event: DragEvent): boolean =>
+      event.dataTransfer?.types.includes(PALETTE_MIME) ?? false;
+    const allow = (event: DragEvent) => {
+      if (carriesEntry(event) && event.dataTransfer !== null) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    };
+    const drop = (event: DragEvent) => {
+      const entryId = event.dataTransfer?.getData(PALETTE_MIME);
+      if (entryId === undefined || entryId === '') {
+        return;
+      }
+      event.preventDefault();
+      const bounds = canvas.getBoundingClientRect();
+      raycaster.setFromCamera(
+        {
+          x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+          y: -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+        } as never,
+        camera,
+      );
+      const point = groundPoint(raycaster.ray, 0);
+      if (point !== null) {
+        onDrop(entryId, { x: point[0] / coordinateScale, y: point[1] / coordinateScale });
+      }
+    };
+
+    canvas.addEventListener('dragover', allow);
+    canvas.addEventListener('drop', drop);
+    return () => {
+      canvas.removeEventListener('dragover', allow);
+      canvas.removeEventListener('drop', drop);
+    };
+  }, [camera, coordinateScale, gl, onDrop, raycaster]);
+
+  return null;
+}
+
 function centerOf(node: ViewNode3D): [number, number, number] {
   return [
     node.position[0] + node.size[0] / 2,
@@ -87,10 +319,22 @@ function centerOf(node: ViewNode3D): [number, number, number] {
   ];
 }
 
-function CameraRig({ nodes }: { readonly nodes: ProjectedView3D['nodes'] }) {
+function CameraRig({
+  nodes,
+  viewId,
+  revealSignal,
+}: {
+  readonly nodes: ProjectedView3D['nodes'];
+  readonly viewId: string;
+  readonly revealSignal: number;
+}) {
   const { camera, invalidate, size } = useThree();
+  // Framing is per view, not per placement: an edit must not throw away the camera the user set.
+  const latestNodes = useRef(nodes);
+  latestNodes.current = nodes;
 
   useLayoutEffect(() => {
+    const nodes = latestNodes.current;
     if (!(camera instanceof OrthographicCamera) || nodes.length === 0) {
       return;
     }
@@ -117,7 +361,7 @@ function CameraRig({ nodes }: { readonly nodes: ProjectedView3D['nodes'] }) {
     camera.far = distance * 8 + 100;
     camera.updateProjectionMatrix();
     invalidate();
-  }, [camera, invalidate, nodes, size.height, size.width]);
+  }, [camera, invalidate, revealSignal, size.height, size.width, viewId]);
 
   return null;
 }
@@ -125,15 +369,27 @@ function CameraRig({ nodes }: { readonly nodes: ProjectedView3D['nodes'] }) {
 function ArchitectureBlock({
   node,
   selected,
+  offset,
+  draggable,
   onSelect,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
 }: {
   readonly node: ViewNode3D;
   readonly selected: boolean;
+  readonly offset: GroundOffset;
+  readonly draggable: boolean;
   readonly onSelect: (elementId: string) => void;
+  readonly onDragStart: (node: ViewNode3D, point: GroundOffset) => void;
+  readonly onDragMove: (point: GroundOffset) => void;
+  readonly onDragEnd: () => void;
 }) {
-  const center = centerOf(node);
-  const color = kindColor[node.kind];
+  const base = centerOf(node);
+  const center: [number, number, number] = [base[0] + offset[0], base[1], base[2] + offset[1]];
   const external = node.tags.includes('external');
+  // The drag plane sits at the block's own height so the block stays under the pointer.
+  const pointerOn = (event: ThreeEvent<PointerEvent>) => groundPoint(event.ray, center[1]);
 
   return (
     <group>
@@ -146,27 +402,60 @@ function ArchitectureBlock({
           event.stopPropagation();
           onSelect(node.elementId);
         }}
+        onPointerDown={(event) => {
+          const point = pointerOn(event);
+          if (point === null || !draggable) {
+            return;
+          }
+          event.stopPropagation();
+          captureTarget(event).setPointerCapture(event.pointerId);
+          onDragStart(node, point);
+        }}
+        onPointerMove={(event) => {
+          const point = pointerOn(event);
+          if (point !== null) {
+            onDragMove(point);
+          }
+        }}
+        onPointerUp={(event) => {
+          captureTarget(event).releasePointerCapture(event.pointerId);
+          onDragEnd();
+        }}
       >
         <meshStandardMaterial
-          color={selected ? '#e8efff' : external ? '#edf0ef' : '#f9fbfa'}
+          color={external ? '#edf0ef' : '#f9fbfa'}
           roughness={0.82}
           metalness={0.02}
         />
       </RoundedBox>
       <mesh position={[center[0], center[1] + node.size[1] / 2 + 0.025, center[2]]}>
         <boxGeometry args={[node.size[0] * 0.96, 0.045, node.size[2] * 0.92]} />
-        <meshStandardMaterial color={selected ? '#2c5cc5' : color} roughness={0.8} />
+        <meshStandardMaterial
+          color={node.color ?? kindCapColor[node.kind]}
+          roughness={0.85}
+          metalness={0}
+        />
       </mesh>
+      {/* Selection is an outline, never a fill: kind colour has to survive, and the primary blue
+          is also the software-system colour. */}
       {selected ? (
-        <mesh position={center} scale={1.045}>
-          <boxGeometry args={[node.size[0], node.size[1], node.size[2]]} />
-          <meshBasicMaterial color="#2c5cc5" wireframe transparent opacity={0.85} />
-        </mesh>
+        <Line
+          points={footprint(center, node.size)}
+          color={SELECTION_COLOR}
+          lineWidth={2.4}
+          transparent
+          opacity={0.9}
+        />
       ) : null}
+      <SpatialModel
+        node={node}
+        position={[center[0], center[1] + node.size[1] / 2 + 0.05, center[2] - node.size[2] * 0.16]}
+      />
+      {/* Screen-space labels: drei multiplies `distanceFactor` by `camera.zoom` under an
+          orthographic camera, so any zoom or orbit inflated these to full-screen text. */}
       <Html
-        position={[center[0], center[1] + node.size[1] / 2 + 0.18, center[2]]}
+        position={[center[0], center[1] - node.size[1] / 2, center[2] + node.size[2] / 2 + 0.95]}
         center
-        distanceFactor={12}
         className="spatial-label-anchor"
         style={{ pointerEvents: 'none' }}
       >
@@ -180,7 +469,84 @@ function ArchitectureBlock({
   );
 }
 
-function SpatialScene({ projection, selectedElementId, onSelect }: SpatialDiagramProps) {
+function SpatialScene({
+  projection,
+  selectedElementId,
+  selectedElementIds,
+  onSelect,
+  onMoveItems,
+  onDropPaletteEntry,
+  connecting,
+  revealSignal,
+}: SpatialDiagramProps) {
+  // Transient renderer state, exactly like the 2D drag preview: pointer movement writes here and
+  // nowhere else, so no domain command, validation, or projection runs until the gesture ends.
+  const [drag, setDrag] = useState<{
+    readonly itemIds: readonly string[];
+    readonly offset: GroundOffset;
+  } | null>(null);
+  const dragOrigin = useRef<GroundOffset | null>(null);
+  const [animateFlow] = useState(() => !prefersReducedMotion());
+
+  const handleDragStart = useCallback(
+    (node: ViewNode3D, point: GroundOffset) => {
+      const together = selectedElementIds.includes(node.elementId)
+        ? projection.nodes
+            .filter((candidate) => selectedElementIds.includes(candidate.elementId))
+            .map((candidate) => candidate.viewItemId)
+        : [node.viewItemId];
+      dragOrigin.current = point;
+      setDrag({ itemIds: together, offset: NO_OFFSET });
+    },
+    [projection.nodes, selectedElementIds],
+  );
+
+  const handleDragMove = useCallback((point: GroundOffset) => {
+    const origin = dragOrigin.current;
+    if (origin === null) {
+      return;
+    }
+    setDrag((current) =>
+      current === null
+        ? null
+        : { ...current, offset: [point[0] - origin[0], point[1] - origin[1]] },
+    );
+  }, []);
+
+  const placedItems = useMemo(
+    () =>
+      projection.nodes.map((node) => ({ itemId: node.viewItemId, rect: { ...node.placement2D } })),
+    [projection.nodes],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    dragOrigin.current = null;
+    setDrag((current) => {
+      if (current === null) {
+        return null;
+      }
+      if (current.offset[0] !== 0 || current.offset[1] !== 0) {
+        const moves = movesFromDrag(
+          projection.nodes,
+          current.itemIds,
+          current.offset,
+          projection.policy.coordinateScale,
+        );
+        // Same rule as the 2D canvas: a block may not come to rest on top of another one.
+        if (!movesCollide(moves, placedItems)) {
+          onMoveItems(moves);
+        }
+      }
+      return null;
+    });
+  }, [onMoveItems, placedItems, projection.nodes, projection.policy.coordinateScale]);
+
+  const offsetFor = useCallback(
+    (viewItemId: string): GroundOffset =>
+      drag !== null && drag.itemIds.includes(viewItemId) ? drag.offset : NO_OFFSET,
+    [drag],
+  );
+
   const center = useMemo<[number, number, number]>(() => {
     if (projection.nodes.length === 0) {
       return [0, 0, 0];
@@ -193,68 +559,119 @@ function SpatialScene({ projection, selectedElementId, onSelect }: SpatialDiagra
     ];
   }, [projection.nodes]);
 
+  const flowLines = useMemo<FlowLine[]>(
+    () =>
+      projection.edges.map((edge) => {
+        const emphasized =
+          edge.sourceElementId === selectedElementId ||
+          edge.targetElementId === selectedElementId ||
+          edge.visibleSourceElementId === selectedElementId ||
+          edge.visibleTargetElementId === selectedElementId;
+        // Only the endpoints follow a drag; any intermediate waypoints stay where they are.
+        const sourceOffset = offsetFor(edge.source);
+        const targetOffset = offsetFor(edge.target);
+        return {
+          id: edge.relationshipId,
+          emphasized,
+          color: emphasized ? '#2c5cc5' : '#69787e',
+          dashed: edge.interaction === 'asynchronous',
+          points: edge.path.map((point, index): WorldPoint => {
+            const offset =
+              index === 0
+                ? sourceOffset
+                : index === edge.path.length - 1
+                  ? targetOffset
+                  : NO_OFFSET;
+            return [point[0] + offset[0], point[1] + 0.35, point[2] + offset[1]];
+          }),
+          head: [
+            edge.targetPosition[0] + targetOffset[0],
+            edge.targetPosition[1] + 0.35,
+            edge.targetPosition[2] + targetOffset[1],
+          ],
+        };
+      }),
+    [offsetFor, projection.edges, selectedElementId],
+  );
+
+  // One world unit is 50 units of 2D placement space, so unit cells stay legible at any span.
+  const groundSize = useMemo(() => {
+    if (projection.nodes.length === 0) {
+      return 20;
+    }
+    const spanX =
+      Math.max(...projection.nodes.map((node) => node.position[0] + node.size[0])) -
+      Math.min(...projection.nodes.map((node) => node.position[0]));
+    const spanZ =
+      Math.max(...projection.nodes.map((node) => node.position[2] + node.size[2])) -
+      Math.min(...projection.nodes.map((node) => node.position[2]));
+    return Math.ceil(Math.max(spanX, spanZ) * 1.6) + 4;
+  }, [projection.nodes]);
+
   return (
     <>
       <color attach="background" args={['#f5f7f5']} />
+      <gridHelper
+        args={[groundSize, groundSize, '#c8d3cd', '#dde4e0']}
+        position={[center[0], -0.01, center[2]]}
+      />
       <hemisphereLight args={['#ffffff', '#dce3df', 1.65]} />
       <directionalLight position={[-18, 28, 20]} intensity={2.1} />
       <directionalLight position={[18, 12, -16]} intensity={0.55} />
       <FrameProbe />
-      <CameraRig nodes={projection.nodes} />
+      <CameraRig nodes={projection.nodes} viewId={projection.viewId} revealSignal={revealSignal} />
+      <PaletteDropTarget
+        coordinateScale={projection.policy.coordinateScale}
+        onDrop={onDropPaletteEntry}
+      />
       <group>
         {projection.platforms.map((platform) => (
           <mesh
             key={platform.id}
             position={[
-              platform.position[0] + platform.size[0] / 2,
+              platform.position[0] + platform.size[0] / 2 + offsetFor(platform.viewItemId)[0],
               platform.position[1] + platform.size[1] / 2,
-              platform.position[2] + platform.size[2] / 2,
+              platform.position[2] + platform.size[2] / 2 + offsetFor(platform.viewItemId)[1],
             ]}
           >
             <boxGeometry args={[...platform.size]} />
             <meshStandardMaterial color="#dfe7e3" roughness={0.9} metalness={0} />
           </mesh>
         ))}
-        {projection.edges.map((edge) => {
-          const selected =
-            edge.sourceElementId === selectedElementId ||
-            edge.targetElementId === selectedElementId ||
-            edge.visibleSourceElementId === selectedElementId ||
-            edge.visibleTargetElementId === selectedElementId;
-          return (
-            <group key={edge.relationshipId}>
-              <Line
-                points={edge.path.map((point) => [point[0], point[1] + 0.35, point[2]])}
-                color={selected ? '#2c5cc5' : '#69787e'}
-                lineWidth={selected ? 2.5 : 1.35}
-                dashed={edge.interaction === 'asynchronous'}
-                dashSize={0.25}
-                gapSize={0.16}
-              />
-              <mesh
-                position={[
-                  edge.targetPosition[0],
-                  edge.targetPosition[1] + 0.35,
-                  edge.targetPosition[2],
-                ]}
-              >
-                <sphereGeometry args={[selected ? 0.11 : 0.075, 12, 12]} />
-                <meshBasicMaterial color={selected ? '#2c5cc5' : '#69787e'} />
-              </mesh>
-            </group>
-          );
-        })}
+        {flowLines.map((line) => (
+          <group key={line.id}>
+            <Line
+              points={line.points}
+              color={line.color}
+              lineWidth={line.emphasized ? 2.5 : 1.35}
+              dashed={line.dashed}
+              dashSize={0.25}
+              gapSize={0.16}
+            />
+            <mesh position={line.head}>
+              <sphereGeometry args={[line.emphasized ? 0.11 : 0.075, 12, 12]} />
+              <meshBasicMaterial color={line.color} />
+            </mesh>
+          </group>
+        ))}
+        {animateFlow ? <FlowPulses lines={flowLines} /> : null}
         {projection.nodes.map((node) => (
           <ArchitectureBlock
             key={node.viewItemId}
             node={node}
             selected={node.elementId === selectedElementId}
+            offset={offsetFor(node.viewItemId)}
+            draggable={!connecting}
             onSelect={onSelect}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
           />
         ))}
       </group>
       <OrbitControls
         makeDefault
+        enabled={drag === null}
         target={center}
         enableDamping
         dampingFactor={0.12}
@@ -290,11 +707,6 @@ export function SpatialDiagram(props: SpatialDiagramProps) {
         >
           <SpatialScene {...props} />
         </Canvas>
-        <div className="view-datum" aria-hidden="true">
-          <span>orthographic</span>
-          <span>{props.projection.nodes.length} elements</span>
-          <span>{props.projection.edges.length} relationships</span>
-        </div>
       </section>
     </SpatialErrorBoundary>
   );

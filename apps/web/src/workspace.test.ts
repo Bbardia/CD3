@@ -150,8 +150,8 @@ describe('workspace view projections', () => {
     );
 
     expect(updated).not.toBe(first);
-    expect(first.policy).toMatchObject({ coordinateScale: 0.02, elevationStep: 1.5 });
-    expect(firstOrderNode?.position).toEqual([19.6, 1.5, 5.1]);
+    expect(first.policy).toMatchObject({ coordinateScale: 0.02, elevationStep: 0 });
+    expect(firstOrderNode?.position).toEqual([19.6, 0, 5.1]);
     expect(updated.policy).toMatchObject({ coordinateScale: 0.03, elevationStep: 2.25 });
     expect(updatedOrderNode?.position).toEqual([37.02, 2.25, 12.96]);
   });
@@ -185,8 +185,8 @@ describe('workspace view projections', () => {
     );
 
     expect(updated).not.toBe(first);
-    expect(first.policy).toMatchObject({ coordinateScale: 0.02, elevationStep: 1.5 });
-    expect(firstOrderNode?.position).toEqual([19.6, 1.5, 5.1]);
+    expect(first.policy).toMatchObject({ coordinateScale: 0.02, elevationStep: 0 });
+    expect(firstOrderNode?.position).toEqual([19.6, 0, 5.1]);
     expect(updated.policy).toMatchObject({ coordinateScale: 0.03, elevationStep: 2.25 });
     expect(updatedOrderNode?.position).toEqual([37.02, 2.25, 12.96]);
   });
@@ -219,13 +219,13 @@ describe('workspace view projections', () => {
     expect(result.project).not.toBe(originalProject);
     expect(moved).not.toBe(original);
     expect(movedOrderNode).toMatchObject({ x: 1_234, y: 432 });
-    expect(movedOrderNode3D?.position).toEqual([24.68, 1.5, 8.64]);
+    expect(movedOrderNode3D?.position).toEqual([24.68, 0, 8.64]);
     expect(getWorkspaceView(result.project, 'core-containers')).toBe(moved);
     expect(getWorkspaceProjection3D(result.project, 'core-containers')).toBe(movedThreeD);
     expect(getWorkspaceView(originalProject, 'core-containers')).toBe(original);
     expect(getWorkspaceProjection3D(originalProject, 'core-containers')).toBe(originalThreeD);
     expect(originalOrderNode).toMatchObject({ x: 980, y: 255 });
-    expect(originalOrderNode3D?.position).toEqual([19.6, 1.5, 5.1]);
+    expect(originalOrderNode3D?.position).toEqual([19.6, 0, 5.1]);
   });
 
   it('rejects unsupported workspace views predictably', () => {
