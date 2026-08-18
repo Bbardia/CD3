@@ -11,6 +11,8 @@ test-results/
 .env.*
 !.env.example
 .claude/
+.hermes/
+docs/
 
 # Runtime project data and backups
 data/

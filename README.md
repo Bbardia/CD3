@@ -16,8 +16,6 @@ fictional **Northstar Commerce** sample.
 | `@cd3/layout`   | Pure view compiler, renderer projections, and ELK adapter |
 | `@cd3/fixtures` | Northstar Commerce and deterministic generated fixtures   |
 
-See [`docs/architecture/`](docs/architecture/) for accepted decisions.
-
 ## Principles
 
 - **Model first.** Elements and relationships carry meaning; views only decide what to show and
