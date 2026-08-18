@@ -11,12 +11,15 @@ export function StageQuickBar({
   hint,
   onAdd,
   onDelete,
+  onRevealInspector,
 }: {
   readonly selectionCount: number;
   /** Transient prompt for the active tool, announced where the pointer already is. */
   readonly hint: string | undefined;
   readonly onAdd: (entryId: string) => void;
   readonly onDelete: () => void;
+  /** Set only while the inspector is hidden; renders the way back. */
+  readonly onRevealInspector?: (() => void) | undefined;
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
 
@@ -70,6 +73,16 @@ export function StageQuickBar({
         >
           Delete{selectionCount > 1 ? ` (${String(selectionCount)})` : ''}
         </button>
+        {onRevealInspector === undefined ? null : (
+          <button
+            type="button"
+            aria-label="Show the inspector"
+            title="Show the inspector"
+            onClick={onRevealInspector}
+          >
+            « Inspector
+          </button>
+        )}
       </div>
     </div>
   );

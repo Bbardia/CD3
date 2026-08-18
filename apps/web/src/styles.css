@@ -72,7 +72,8 @@ button:focus-visible,
 .app-shell {
   display: grid;
   --explorer-width: 272px;
-  grid-template-columns: var(--explorer-width) minmax(0, 1fr) 320px;
+  --inspector-width: 320px;
+  grid-template-columns: var(--explorer-width) minmax(0, 1fr) var(--inspector-width);
   grid-template-rows: 52px minmax(0, 1fr) 26px;
   grid-template-areas:
     'header header header'
@@ -1223,7 +1224,8 @@ details:not([open]).inspector-section > .inspector-section__summary {
 @media (max-width: 1280px) {
   .app-shell {
     --explorer-width: 240px;
-    grid-template-columns: var(--explorer-width) minmax(0, 1fr) 288px;
+    --inspector-width: 288px;
+    grid-template-columns: var(--explorer-width) minmax(0, 1fr) var(--inspector-width);
   }
 }
 
@@ -1773,6 +1775,25 @@ details:not([open]).inspector-section > .inspector-section__summary {
 
 .app-shell--no-explorer {
   --explorer-width: 0px;
+}
+
+.app-shell--no-inspector {
+  --inspector-width: 0px;
+}
+
+.inspector {
+  position: relative;
+}
+
+.inspector-hide {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+}
+
+.inspector-title {
+  padding-right: 36px;
 }
 
 .tree-group__heading::-webkit-details-marker {

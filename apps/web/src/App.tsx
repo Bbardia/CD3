@@ -632,6 +632,7 @@ function Inspector({
   inCurrentView,
   onAddToView,
   onRemoveFromView,
+  onHide,
 }: {
   readonly project: ReadonlyProject;
   readonly selectedElementId: ElementId | undefined;
@@ -649,6 +650,7 @@ function Inspector({
   readonly inCurrentView: boolean;
   readonly onAddToView: (elementId: ElementId) => void;
   readonly onRemoveFromView: (elementId: ElementId) => void;
+  readonly onHide: () => void;
 }) {
   const element =
     selectedElementId === undefined ? undefined : ownElement(project, selectedElementId);
@@ -666,6 +668,15 @@ function Inspector({
 
   return (
     <aside className="inspector" aria-label="Inspector">
+      <button
+        type="button"
+        className="icon-button inspector-hide"
+        aria-label="Hide the inspector"
+        title="Hide the inspector"
+        onClick={onHide}
+      >
+        »
+      </button>
       {element === undefined ? (
         <div className="inspector-empty">
           <span className="empty-glyph" aria-hidden="true">
@@ -814,6 +825,7 @@ export function App() {
   const [renamingElementId, setRenamingElementId] = useState<ElementId | undefined>(undefined);
   const [freshViewId, setFreshViewId] = useState<string | undefined>(undefined);
   const [explorerOpen, setExplorerOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editingEdge, setEditingEdge] = useState<
     { readonly relationshipId: string; readonly x: number; readonly y: number } | undefined
   >(undefined);
@@ -1185,7 +1197,11 @@ export function App() {
   const warningCount = workspaceView.compiled.warnings.length;
 
   return (
-    <div className={`app-shell${explorerOpen ? '' : ' app-shell--no-explorer'}`}>
+    <div
+      className={`app-shell${explorerOpen ? '' : ' app-shell--no-explorer'}${
+        inspectorOpen ? '' : ' app-shell--no-inspector'
+      }`}
+    >
       <header className="global-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
@@ -1349,6 +1365,7 @@ export function App() {
             }
             onAdd={quickAdd}
             onDelete={() => selectedElementIds.forEach((elementId) => deleteElement(elementId))}
+            onRevealInspector={inspectorOpen ? undefined : () => setInspectorOpen(true)}
           />
           {mode === '2d' ? (
             <Diagram2D
@@ -1392,20 +1409,25 @@ export function App() {
         </div>
       </main>
 
-      <Inspector
-        project={project}
-        selectedElementId={selectedElementId}
-        onClear={() => setSelection([])}
-        onUpdateElement={updateElement}
-        onDeleteElement={deleteElement}
-        onConnect={connectElements}
-        onUpdateRelationship={updateRelationship}
-        onDeleteRelationship={deleteRelationship}
-        renamingElementId={renamingElementId}
-        inCurrentView={selectedElementId !== undefined && visibleElementIds.has(selectedElementId)}
-        onAddToView={addElementToView}
-        onRemoveFromView={removeElementFromView}
-      />
+      {inspectorOpen ? (
+        <Inspector
+          project={project}
+          selectedElementId={selectedElementId}
+          onClear={() => setSelection([])}
+          onUpdateElement={updateElement}
+          onDeleteElement={deleteElement}
+          onConnect={connectElements}
+          onUpdateRelationship={updateRelationship}
+          onDeleteRelationship={deleteRelationship}
+          renamingElementId={renamingElementId}
+          inCurrentView={
+            selectedElementId !== undefined && visibleElementIds.has(selectedElementId)
+          }
+          onAddToView={addElementToView}
+          onRemoveFromView={removeElementFromView}
+          onHide={() => setInspectorOpen(false)}
+        />
+      ) : null}
 
       <footer
         className="status-strip"

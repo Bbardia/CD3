@@ -154,6 +154,19 @@ describe.sequential('CD3 workspace shell', () => {
     expect(projection3DMock).toHaveBeenCalledWith(project, 'core-containers');
   });
 
+  it('hides the inspector behind its toggle and brings it back from the quick bar', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: 'Hide the inspector' }));
+
+    expect(screen.queryByRole('complementary', { name: 'Inspector' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show the inspector' }));
+
+    expect(screen.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
+  });
+
   it('hides the explorer behind its toggle and brings it back', async () => {
     const user = userEvent.setup();
     renderApp();
