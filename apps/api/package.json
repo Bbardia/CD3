@@ -11,6 +11,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@cd3/domain": "workspace:*",
     "fastify": "^5.12.0"
+  },
+  "devDependencies": {
+    "@cd3/fixtures": "workspace:*"
   }
 }

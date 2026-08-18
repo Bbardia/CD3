@@ -62,9 +62,16 @@ importers:
 
   apps/api:
     dependencies:
+      '@cd3/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       fastify:
         specifier: ^5.12.0
         version: 5.12.0
+    devDependencies:
+      '@cd3/fixtures':
+        specifier: workspace:*
+        version: link:../../packages/fixtures
 
   apps/web:
     dependencies:
