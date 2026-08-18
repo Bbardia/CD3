@@ -225,6 +225,104 @@ function ModelExplorer({
   );
 }
 
+/** Inline editor for one relationship, opened by clicking its line on the canvas. */
+function EdgeEditor({
+  relationship,
+  x,
+  y,
+  onRename,
+  onRetype,
+  onDelete,
+  onClose,
+}: {
+  readonly relationship: DeepReadonly<Relationship>;
+  readonly x: number;
+  readonly y: number;
+  readonly onRename: (name: string) => void;
+  readonly onRetype: (interaction: Relationship['interaction']) => void;
+  readonly onDelete: () => void;
+  readonly onClose: () => void;
+}) {
+  const editor = useRef<HTMLDivElement>(null);
+  const [name, setName] = useState(relationship.name);
+
+  useEffect(() => {
+    setName(relationship.name);
+  }, [relationship.name]);
+
+  useEffect(() => {
+    const closeOnOutside = (event: MouseEvent) => {
+      if (editor.current !== null && !editor.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [onClose]);
+
+  const commit = () => {
+    const next = name.trim();
+    if (next !== '' && next !== relationship.name) {
+      onRename(next);
+    } else {
+      setName(relationship.name);
+    }
+  };
+
+  return (
+    <div
+      ref={editor}
+      className="edge-editor"
+      style={{ left: x, top: y }}
+      role="dialog"
+      aria-label={`Edit relationship ${relationship.name}`}
+    >
+      <input
+        aria-label="Relationship name"
+        value={name}
+        maxLength={120}
+        onChange={(event) => setName(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur();
+            onClose();
+          }
+        }}
+      />
+      <div className="edge-editor__row">
+        <select
+          aria-label="Interaction"
+          value={relationship.interaction}
+          onChange={(event) => onRetype(event.target.value as Relationship['interaction'])}
+        >
+          <option value="synchronous">synchronous</option>
+          <option value="asynchronous">asynchronous</option>
+        </select>
+        <button
+          type="button"
+          className="danger-button"
+          onClick={() => {
+            onDelete();
+            onClose();
+          }}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Palette entries at the pointer: what a right-click on empty canvas opens. */
 function StageAddMenu({
   x,
@@ -716,6 +814,9 @@ export function App() {
   const [renamingElementId, setRenamingElementId] = useState<ElementId | undefined>(undefined);
   const [freshViewId, setFreshViewId] = useState<string | undefined>(undefined);
   const [explorerOpen, setExplorerOpen] = useState(true);
+  const [editingEdge, setEditingEdge] = useState<
+    { readonly relationshipId: string; readonly x: number; readonly y: number } | undefined
+  >(undefined);
   const [addAt, setAddAt] = useState<
     | { readonly x: number; readonly y: number; readonly placement: { x: number; y: number } }
     | undefined
@@ -769,6 +870,21 @@ export function App() {
       setPendingSourceId(undefined);
     },
     [pendingSourceId, selectElement, setSelection, tool],
+  );
+
+  const requestEditRelationship = useCallback(
+    (request: { relationshipId: string; clientX: number; clientY: number }) => {
+      const stage = stageRef.current?.getBoundingClientRect();
+      if (stage === undefined) {
+        return;
+      }
+      setEditingEdge({
+        relationshipId: request.relationshipId,
+        x: Math.min(request.clientX - stage.left, stage.width - 240),
+        y: Math.min(request.clientY - stage.top, stage.height - 120),
+      });
+    },
+    [],
   );
 
   const requestAddAt = useCallback(
@@ -1191,6 +1307,26 @@ export function App() {
               ⛶
             </button>
           ) : null}
+          {(() => {
+            if (editingEdge === undefined) {
+              return null;
+            }
+            const relationship = project.relationships[editingEdge.relationshipId];
+            if (relationship === undefined) {
+              return null;
+            }
+            return (
+              <EdgeEditor
+                relationship={relationship}
+                x={editingEdge.x}
+                y={editingEdge.y}
+                onRename={(name) => updateRelationship(relationship.id, { name })}
+                onRetype={(interaction) => updateRelationship(relationship.id, { interaction })}
+                onDelete={() => deleteRelationship(relationship.id)}
+                onClose={() => setEditingEdge(undefined)}
+              />
+            );
+          })()}
           {addAt === undefined ? null : (
             <StageAddMenu
               x={addAt.x}
@@ -1228,6 +1364,7 @@ export function App() {
               connecting={tool === 'connect'}
               revealSignal={revealSignal}
               onRequestAddAt={requestAddAt}
+              onEditRelationship={requestEditRelationship}
             />
           ) : projection3D === undefined ? null : (
             <Suspense

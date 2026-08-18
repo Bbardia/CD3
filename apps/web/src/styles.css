@@ -1820,3 +1820,57 @@ details[open] > .tree-group__heading .tree-group__caret {
   border-color: var(--primary);
   color: var(--primary);
 }
+
+/* Edge editor -------------------------------------------------------------- */
+
+.edge-editor {
+  position: absolute;
+  z-index: 11;
+  display: flex;
+  width: 224px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(30, 50, 45, 0.16);
+}
+
+.edge-editor input {
+  padding: 5px 7px;
+  border: 1px solid var(--divider);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-small);
+  font-weight: 600;
+}
+
+.edge-editor input:focus-visible {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.edge-editor__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.edge-editor__row select {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--divider);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-small);
+}
+
+.edge-editor .danger-button {
+  margin-top: 0;
+}

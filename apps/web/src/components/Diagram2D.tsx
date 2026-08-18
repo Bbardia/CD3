@@ -30,6 +30,12 @@ export interface Diagram2DProps {
   readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
   /** Palette drop, reported in placement space so the caller stays renderer-neutral. */
   readonly onDropPaletteEntry: (entryId: string, placement: { x: number; y: number }) => void;
+  /** Click on a relationship line or its label: open that connection's editor at the pointer. */
+  readonly onEditRelationship: (request: {
+    relationshipId: string;
+    clientX: number;
+    clientY: number;
+  }) => void;
   /** Double-click on empty canvas: where the pointer is on screen, and in placement space. */
   readonly onRequestAddAt: (request: {
     clientX: number;
@@ -60,6 +66,7 @@ export function Diagram2D({
   connecting,
   revealSignal,
   onRequestAddAt,
+  onEditRelationship,
 }: Diagram2DProps) {
   const [flow, setFlow] = useState<ReactFlowInstance<DatumFlowNode, Edge> | null>(null);
   const elementIdByItemId = useMemo(
@@ -174,7 +181,7 @@ export function Diagram2D({
           target: edge.targetViewItemId,
           label: edge.name,
           type: 'smoothstep',
-          selectable: false,
+          selectable: true,
           focusable: false,
           animated: false,
           markerEnd: {
@@ -236,6 +243,13 @@ export function Diagram2D({
         onNodeClick={(event, node) =>
           onSelect(node.data.elementId, event.ctrlKey || event.metaKey || event.shiftKey)
         }
+        onEdgeClick={(event, edge) => {
+          onEditRelationship({
+            relationshipId: edge.id,
+            clientX: event.clientX,
+            clientY: event.clientY,
+          });
+        }}
         onPaneClick={(event) => {
           onSelect(undefined);
           // The second click of a double-click carries detail 2: open the add menu right there.

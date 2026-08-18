@@ -110,6 +110,7 @@ function renderDiagram(overrides: Partial<Parameters<typeof Diagram2D>[0]> = {})
       connecting={false}
       revealSignal={0}
       onRequestAddAt={() => undefined}
+      onEditRelationship={vi.fn()}
       {...overrides}
     />,
   );
@@ -180,6 +181,26 @@ describe('Diagram2D authoring', () => {
       clientX: 100,
       clientY: 40,
       placement: { x: 200, y: 40 },
+    });
+  });
+
+  it('reports an edge click with the relationship id and pointer position', () => {
+    const onEditRelationship = vi.fn();
+    renderDiagram({ onEditRelationship });
+    const edge = (latestFlowProps() as unknown as { edges: readonly { id: string }[] }).edges[0];
+
+    act(() => {
+      (
+        latestFlowProps() as unknown as {
+          onEdgeClick: (event: { clientX: number; clientY: number }, edge: unknown) => void;
+        }
+      ).onEdgeClick({ clientX: 320, clientY: 180 }, edge);
+    });
+
+    expect(onEditRelationship).toHaveBeenCalledWith({
+      relationshipId: edge?.id,
+      clientX: 320,
+      clientY: 180,
     });
   });
 
@@ -299,6 +320,7 @@ describe('Diagram2D drag editing', () => {
         connecting={false}
         revealSignal={0}
         onRequestAddAt={() => undefined}
+        onEditRelationship={vi.fn()}
       />,
     );
 
@@ -324,6 +346,7 @@ describe('Diagram2D drag editing', () => {
         connecting={false}
         revealSignal={0}
         onRequestAddAt={() => undefined}
+        onEditRelationship={vi.fn()}
       />,
     );
 
