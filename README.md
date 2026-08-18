@@ -3,15 +3,16 @@
 CD3 is an independent, local-first C4 model-driven architecture editor. One canonical project model
 drives an editable React Flow 2D canvas and a synchronized React Three Fiber spatial view: elements
 can be added, moved, connected, recoloured, and deleted from either view, and every change is one
-undoable command against the model. The application runs entirely on loopback and ships with the
-fictional **Northstar Commerce** sample.
+undoable command against the model. Everything runs on loopback, ships with the fictional
+**Northstar Commerce** sample, and packages as a double-clickable Mac app.
 
 ## Workspace
 
 | Package         | Purpose                                                   |
 | --------------- | --------------------------------------------------------- |
 | `@cd3/web`      | React 19 + Vite architecture workspace                    |
-| `@cd3/api`      | Fastify loopback API shell                                |
+| `@cd3/api`      | Fastify loopback API and snapshot store                   |
+| `@cd3/desktop`  | Electron shell around the loopback server                 |
 | `@cd3/domain`   | Framework-independent Zod schema and TypeScript types     |
 | `@cd3/layout`   | Pure view compiler, renderer projections, and ELK adapter |
 | `@cd3/fixtures` | Northstar Commerce and deterministic generated fixtures   |
@@ -24,10 +25,9 @@ fictional **Northstar Commerce** sample.
   project snapshot.
 - **Deterministic and portable.** A versioned JSON snapshot validates, diffs, backs up, and
   reproduces.
-- **Useful offline.** Services bind to loopback only, with no cloud runtime dependency, and must not
-  be exposed publicly.
-- **Progressive depth.** 3D clarifies hierarchy and topology without becoming a second layout: 2D
-  placement is authoritative, and a 3D drag commits as a 2D move.
+- **Useful offline.** Loopback only, no cloud dependency, never exposed publicly.
+- **Progressive depth.** 3D clarifies hierarchy without becoming a second layout: 2D placement is
+  authoritative, and a 3D drag commits as a 2D move.
 - **Independent visual identity.** An original visual language, borrowing no other product's trade
   dress.
 
@@ -41,23 +41,18 @@ fictional **Northstar Commerce** sample.
 | Component       | —           | Pricing Engine     |
 
 Relationships are normalized records with synchronous or asynchronous interaction. A view holds at
-most one occurrence of an element, keyed separately from the element ID, and a hidden relationship
-endpoint may project to its nearest visible ancestor without losing the underlying relationship ID.
+most one occurrence of an element, and a hidden relationship endpoint may project to its nearest
+visible ancestor without losing the underlying relationship ID. Selection is semantic: the tree, 2D,
+and 3D always select the same element. If WebGL is unavailable, the 2D workspace remains fully
+usable.
 
-Selection is semantic — the tree, 2D, and 3D always select the same element, and switching modes
-preserves it. Add, move, connect, recolour, and delete work from either view; every change is one
-undoable command. If WebGL is unavailable, the 2D workspace and a clear 3D fallback remain usable.
-
-Out of scope: multi-user collaboration and authentication, cloud hosting or telemetry, perspective
-and split-mode presentation, duplicate occurrences of one element in a view, and Isoflow-compatible
-files.
-
-## Requirements
-
-- Node.js 22 (see `.node-version`)
-- pnpm 11.21.0 (pinned by `packageManager`)
+Out of scope: multi-user collaboration and authentication, cloud hosting or telemetry, duplicate
+occurrences of one element in a view, and Isoflow-compatible files.
 
 ## Develop
+
+Requires Node.js 22 (`.node-version`) and pnpm 11 (pinned by `packageManager`; `corepack enable`
+provides it).
 
 ```sh
 pnpm install
@@ -66,27 +61,9 @@ pnpm dev
 
 - Web workspace: <http://127.0.0.1:5173>
 - API health: <http://127.0.0.1:3100/api/health>
-- Project snapshot: <http://127.0.0.1:3100/api/project>
 
-Run both: with the API stopped the editor still saves to the browser, and says so.
-
-Both development servers bind to loopback by default. Copy `apps/api/.env.example` only if you need
-to override the API port; never commit local environment files.
-
-## Clone on macOS
-
-Authenticate the GitHub CLI as an account with access to this private repository, then run:
-
-```sh
-gh repo clone Bbardia/CD3
-cd CD3
-corepack enable
-pnpm install --frozen-lockfile
-pnpm dev
-```
-
-Alternatively, clone over SSH with `git clone git@github.com:Bbardia/CD3.git`. The application stays
-local to the Mac and the development services continue to bind to loopback only.
+With the API stopped the editor still saves to the browser, and says so. Copy
+`apps/api/.env.example` only to override the API port.
 
 ## Run as an application
 
@@ -103,27 +80,17 @@ in CI and attaches it to the tag's GitHub release.
 ## Verify
 
 ```sh
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-# or all four:
-pnpm check
+pnpm check   # lint, typecheck, test, build
 ```
 
-Generate the committed JSON Schema after changing the domain schema:
-
-```sh
-pnpm generate:schema
-```
+After changing the domain schema, regenerate the committed JSON Schema with `pnpm generate:schema`.
 
 ## Data boundary
 
-The workspace saves itself. Edits are written to the browser and, whenever the loopback API is
-running, to a versioned JSON snapshot at `apps/api/data/project.c4.json`; on open, that snapshot
-wins over the browser copy, which wins over the bundled sample. `data/` is ignored by Git.
-
-Do not commit `.env` files, project data, databases, backups, secrets, or machine-specific paths.
+The workspace saves itself: edits go to the browser and, when the loopback API is running, to a
+versioned JSON snapshot at `apps/api/data/project.c4.json` with timestamped history beside it. On
+open, disk wins over the browser copy, which wins over the bundled sample. Never commit `.env`
+files, project data, backups, or secrets — `data/` and `release/` are ignored by Git.
 
 ## License and independence
 
