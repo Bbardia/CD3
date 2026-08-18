@@ -88,6 +88,7 @@ function ModelExplorer({
   onAddPaletteEntry,
   onCreateView,
   onDeleteView,
+  onHide,
 }: {
   readonly project: ReadonlyProject;
   readonly selectedElementId: ElementId | undefined;
@@ -98,6 +99,7 @@ function ModelExplorer({
   readonly onAddPaletteEntry: (entryId: string) => void;
   readonly onCreateView: () => void;
   readonly onDeleteView: (viewId: string) => void;
+  readonly onHide: () => void;
 }) {
   const elements = useMemo(
     () =>
@@ -111,6 +113,15 @@ function ModelExplorer({
         <div>
           <h2>Model explorer</h2>
         </div>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Hide the explorer"
+          title="Hide the explorer"
+          onClick={onHide}
+        >
+          «
+        </button>
       </div>
 
       <div className="explorer-scroll">
@@ -120,16 +131,22 @@ function ModelExplorer({
             {elementGroupOrder.map((kind) => {
               const groupElements = elements.filter((element) => element.kind === kind);
               return (
-                <div
+                <details
                   className="tree-group"
                   key={kind}
                   role="group"
                   aria-label={elementGroupLabel[kind]}
+                  open
                 >
-                  <div className="tree-group__heading">
-                    <span>{elementGroupLabel[kind]}</span>
+                  <summary className="tree-group__heading">
+                    <span className="tree-group__label">
+                      <span className="tree-group__caret" aria-hidden="true">
+                        ▶
+                      </span>
+                      {elementGroupLabel[kind]}
+                    </span>
                     <span>{groupElements.length}</span>
-                  </div>
+                  </summary>
                   {groupElements.map((element) => (
                     <button
                       key={element.id}
@@ -153,7 +170,7 @@ function ModelExplorer({
                       ) : null}
                     </button>
                   ))}
-                </div>
+                </details>
               );
             })}
           </div>
@@ -682,6 +699,7 @@ export function App() {
   const [revealSignal, setRevealSignal] = useState(0);
   const [renamingElementId, setRenamingElementId] = useState<ElementId | undefined>(undefined);
   const [freshViewId, setFreshViewId] = useState<string | undefined>(undefined);
+  const [explorerOpen, setExplorerOpen] = useState(true);
   const [addAt, setAddAt] = useState<
     | { readonly x: number; readonly y: number; readonly placement: { x: number; y: number } }
     | undefined
@@ -1035,7 +1053,7 @@ export function App() {
   const warningCount = workspaceView.compiled.warnings.length;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${explorerOpen ? '' : ' app-shell--no-explorer'}`}>
       <header className="global-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
@@ -1056,17 +1074,20 @@ export function App() {
         </div>
       </header>
 
-      <ModelExplorer
-        project={project}
-        selectedElementId={selectedElementId}
-        selectedViewId={viewId}
-        visibleElementIds={visibleElementIds}
-        onSelectElement={selectElement}
-        onSelectView={setViewId}
-        onAddPaletteEntry={quickAdd}
-        onCreateView={createView}
-        onDeleteView={deleteView}
-      />
+      {explorerOpen ? (
+        <ModelExplorer
+          project={project}
+          selectedElementId={selectedElementId}
+          selectedViewId={viewId}
+          visibleElementIds={visibleElementIds}
+          onSelectElement={selectElement}
+          onSelectView={setViewId}
+          onAddPaletteEntry={quickAdd}
+          onCreateView={createView}
+          onDeleteView={deleteView}
+          onHide={() => setExplorerOpen(false)}
+        />
+      ) : null}
 
       <main className="stage">
         <div className="stage-bar">
@@ -1132,6 +1153,17 @@ export function App() {
         <CommandErrorBanner />
 
         <div className="stage-canvas" ref={stageRef}>
+          {explorerOpen ? null : (
+            <button
+              type="button"
+              className="explorer-reveal"
+              aria-label="Show the explorer"
+              title="Show the explorer"
+              onClick={() => setExplorerOpen(true)}
+            >
+              » Explorer
+            </button>
+          )}
           {mode === '3d' ? (
             <button
               type="button"

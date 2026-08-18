@@ -154,6 +154,19 @@ describe.sequential('CD3 workspace shell', () => {
     expect(projection3DMock).toHaveBeenCalledWith(project, 'core-containers');
   });
 
+  it('hides the explorer behind its toggle and brings it back', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: 'Hide the explorer' }));
+
+    expect(screen.queryByRole('navigation', { name: 'Model explorer' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show the explorer' }));
+
+    expect(screen.getByRole('navigation', { name: 'Model explorer' })).toBeVisible();
+  });
+
   it('renders an accessible application shell with mode, view, and history controls', () => {
     renderApp();
 
