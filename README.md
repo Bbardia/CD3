@@ -26,10 +26,10 @@ See [`docs/architecture/`](docs/architecture/) for accepted decisions.
   project snapshot.
 - **Deterministic and portable.** A versioned JSON snapshot validates, diffs, backs up, and
   reproduces.
-- **Useful offline.** Services bind to loopback only, with no cloud runtime dependency, and must
-  not be exposed publicly.
-- **Progressive depth.** 3D clarifies hierarchy and topology without becoming a second layout:
-  2D placement is authoritative, and a 3D drag commits as a 2D move.
+- **Useful offline.** Services bind to loopback only, with no cloud runtime dependency, and must not
+  be exposed publicly.
+- **Progressive depth.** 3D clarifies hierarchy and topology without becoming a second layout: 2D
+  placement is authoritative, and a 3D drag commits as a 2D move.
 - **Independent visual identity.** An original visual language, borrowing no other product's trade
   dress.
 
