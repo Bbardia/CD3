@@ -57,6 +57,7 @@ interface CapturedFlowProps {
   ) => void;
   readonly onNodeClick: (event: unknown, node: DatumFlowNode) => void;
   readonly onPaneClick: (event: unknown) => void;
+  readonly onConnect: (connection: { source: string; target: string }) => void;
 }
 
 function latestFlowProps(): CapturedFlowProps {
@@ -104,11 +105,55 @@ function renderDiagram(overrides: Partial<Parameters<typeof Diagram2D>[0]> = {})
       selectedElementIds={[]}
       onSelect={onSelect}
       onMoveItems={onMoveItems}
+      onDropPaletteEntry={vi.fn()}
+      onConnectElements={vi.fn()}
+      connecting={false}
+      revealSignal={0}
       {...overrides}
     />,
   );
   return { ...view, onMoveItems, onSelect };
 }
+
+describe('Diagram2D authoring', () => {
+  beforeEach(() => {
+    reactFlowPropsMock.mockClear();
+  });
+
+  it('reports handle connections as element ids, not view item ids', () => {
+    const onConnectElements = vi.fn();
+    renderDiagram({ onConnectElements });
+
+    act(() => {
+      latestFlowProps().onConnect({ source: lowerItemId, target: higherItemId });
+    });
+
+    expect(onConnectElements).toHaveBeenCalledWith(
+      nodeById(lowerItemId).data.elementId,
+      nodeById(higherItemId).data.elementId,
+    );
+  });
+
+  it('does not commit a drag that drops a node on top of another one', () => {
+    const { onMoveItems } = renderDiagram();
+    const target = nodeById(higherItemId);
+
+    dragTo(lowerItemId, target.position.x + 10, target.position.y + 10);
+    dropDragged([lowerItemId]);
+
+    expect(onMoveItems).not.toHaveBeenCalled();
+    expect(nodeById(lowerItemId).position).toEqual(
+      baseProjection.nodes.find((node) => node.viewItemId === lowerItemId)?.position,
+    );
+  });
+
+  it('parks node dragging while the connect tool is active', () => {
+    renderDiagram({ connecting: true });
+
+    expect(latestFlowProps().nodesDraggable).toBe(false);
+    expect(latestFlowProps().nodes.every((node) => node.draggable === false)).toBe(true);
+  });
+});
 
 describe('Diagram2D drag editing', () => {
   beforeEach(() => {
@@ -125,9 +170,9 @@ describe('Diagram2D drag editing', () => {
   it('moves a node locally during a drag without emitting a command', () => {
     const { onMoveItems } = renderDiagram();
 
-    dragTo(lowerItemId, 640, 320);
+    dragTo(lowerItemId, 640, 900);
 
-    expect(nodeById(lowerItemId).position).toEqual({ x: 640, y: 320 });
+    expect(nodeById(lowerItemId).position).toEqual({ x: 640, y: 900 });
     expect(onMoveItems).not.toHaveBeenCalled();
   });
 
@@ -136,7 +181,7 @@ describe('Diagram2D drag editing', () => {
     const before = reactFlowPropsMock.mock.calls.length;
 
     for (let step = 0; step < 5; step += 1) {
-      dragTo(lowerItemId, 400 + step, 300 + step);
+      dragTo(lowerItemId, 400 + step, 900 + step);
     }
 
     // One render per change. Any cascade — a projection recompute, an effect writing state back,
@@ -148,7 +193,7 @@ describe('Diagram2D drag editing', () => {
     renderDiagram();
     const untouched = nodeById(higherItemId);
 
-    dragTo(lowerItemId, 640, 320);
+    dragTo(lowerItemId, 640, 900);
 
     expect(nodeById(higherItemId)).toBe(untouched);
   });
@@ -156,24 +201,24 @@ describe('Diagram2D drag editing', () => {
   it('emits exactly one command when the pointer is released', () => {
     const { onMoveItems } = renderDiagram();
 
-    dragTo(lowerItemId, 640, 320);
+    dragTo(lowerItemId, 640, 900);
     dropDragged([lowerItemId]);
 
     expect(onMoveItems).toHaveBeenCalledOnce();
-    expect(onMoveItems).toHaveBeenCalledWith([{ itemId: lowerItemId, x: 640, y: 320 }]);
+    expect(onMoveItems).toHaveBeenCalledWith([{ itemId: lowerItemId, x: 640, y: 900 }]);
   });
 
   it('collects a multi-node drag into one command sorted by code-unit order', () => {
     const { onMoveItems } = renderDiagram();
 
-    dragTo(higherItemId, 700, 400);
-    dragTo(lowerItemId, 640, 320);
+    dragTo(higherItemId, 700, 1000);
+    dragTo(lowerItemId, 640, 900);
     dropDragged([higherItemId, lowerItemId]);
 
     expect(onMoveItems).toHaveBeenCalledOnce();
     expect(onMoveItems).toHaveBeenCalledWith([
-      { itemId: lowerItemId, x: 640, y: 320 },
-      { itemId: higherItemId, x: 700, y: 400 },
+      { itemId: lowerItemId, x: 640, y: 900 },
+      { itemId: higherItemId, x: 700, y: 1000 },
     ]);
   });
 
@@ -190,7 +235,7 @@ describe('Diagram2D drag editing', () => {
   it('restores canonical positions when a drop is rejected and the projection does not change', () => {
     const { onMoveItems } = renderDiagram();
 
-    dragTo(lowerItemId, 640, 320);
+    dragTo(lowerItemId, 640, 900);
     dropDragged([lowerItemId]);
 
     expect(onMoveItems).toHaveBeenCalledOnce();
@@ -203,27 +248,31 @@ describe('Diagram2D drag editing', () => {
   it('adopts the accepted coordinates once the projection reflects the command', () => {
     const { rerender } = renderDiagram();
 
-    dragTo(lowerItemId, 640, 320);
+    dragTo(lowerItemId, 640, 900);
     dropDragged([lowerItemId]);
 
     rerender(
       <Diagram2D
-        projection={projectionAfterMove([{ itemId: lowerItemId, x: 640, y: 320 }])}
+        projection={projectionAfterMove([{ itemId: lowerItemId, x: 640, y: 900 }])}
         selectedElementId={undefined}
         selectedElementIds={[]}
         onSelect={vi.fn()}
         onMoveItems={vi.fn()}
+        onDropPaletteEntry={vi.fn()}
+        onConnectElements={vi.fn()}
+        connecting={false}
+        revealSignal={0}
       />,
     );
 
-    expect(nodeById(lowerItemId).position).toEqual({ x: 640, y: 320 });
+    expect(nodeById(lowerItemId).position).toEqual({ x: 640, y: 900 });
   });
 
   it('discards a stale drag preview when the projection identity changes', () => {
     const { rerender } = renderDiagram();
 
-    dragTo(lowerItemId, 640, 320);
-    expect(nodeById(lowerItemId).position).toEqual({ x: 640, y: 320 });
+    dragTo(lowerItemId, 640, 900);
+    expect(nodeById(lowerItemId).position).toEqual({ x: 640, y: 900 });
 
     const otherProjection = projectionAfterMove([{ itemId: higherItemId, x: 111, y: 222 }]);
     rerender(
@@ -233,6 +282,10 @@ describe('Diagram2D drag editing', () => {
         selectedElementIds={[]}
         onSelect={vi.fn()}
         onMoveItems={vi.fn()}
+        onDropPaletteEntry={vi.fn()}
+        onConnectElements={vi.fn()}
+        connecting={false}
+        revealSignal={0}
       />,
     );
 
@@ -290,14 +343,14 @@ describe('Diagram2D drag editing', () => {
       selectedElementIds: [firstNode.elementId, secondNode.elementId],
     });
 
-    dragTo(higherItemId, 700, 400);
-    dragTo(lowerItemId, 640, 320);
+    dragTo(higherItemId, 700, 1000);
+    dragTo(lowerItemId, 640, 900);
     dropDragged([higherItemId, lowerItemId]);
 
     expect(onMoveItems).toHaveBeenCalledOnce();
     expect(onMoveItems).toHaveBeenCalledWith([
-      { itemId: lowerItemId, x: 640, y: 320 },
-      { itemId: higherItemId, x: 700, y: 400 },
+      { itemId: lowerItemId, x: 640, y: 900 },
+      { itemId: higherItemId, x: 700, y: 1000 },
     ]);
   });
 });

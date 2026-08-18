@@ -50,6 +50,22 @@ const saveButton = () => screen.getByRole('button', { name: 'Save' });
 const cancelButton = () => screen.getByRole('button', { name: 'Cancel' });
 
 describe('ElementInspectorForm', () => {
+  it('hands over the selected name when an element was just authored', async () => {
+    const user = userEvent.setup();
+    render(<ElementInspectorForm element={orderService} onSubmit={vi.fn()} renaming />);
+
+    await user.keyboard('Fulfilment');
+
+    // The placeholder name is selected, so the first keystroke replaces it rather than appending.
+    expect(nameField()).toHaveValue('Fulfilment');
+  });
+
+  it('leaves the name alone for an element that already existed', () => {
+    renderForm();
+
+    expect(nameField()).not.toHaveFocus();
+  });
+
   it('seeds every editable field from the canonical element', () => {
     renderForm();
 
@@ -118,7 +134,7 @@ describe('ElementInspectorForm', () => {
     await user.type(nameField(), '   ');
 
     expect(saveButton()).toBeDisabled();
-    expect(screen.getByText('Matches current model')).toBeVisible();
+    expect(screen.queryByText('Unsaved draft')).not.toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -224,7 +240,7 @@ describe('ElementInspectorForm', () => {
 
     expect(nameField()).toHaveValue('Renamed Service');
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByText('Matches current model')).toBeVisible();
+    expect(screen.queryByText('Unsaved draft')).not.toBeInTheDocument();
   });
 
   it('asks before replacing an unsaved draft when the element changes underneath', async () => {

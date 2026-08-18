@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { DeepReadonly, Element, ElementChanges } from '@cd3/domain';
 
 import type { CommandErrorData } from '../editor/editor-store';
@@ -7,6 +7,8 @@ export interface ElementInspectorFormProps {
   readonly element: DeepReadonly<Element>;
   /** Applies one update-element command and reports the domain error it was rejected with. */
   readonly onSubmit: (changes: ElementChanges) => CommandErrorData | undefined;
+  /** Set for an element that was just authored, so its placeholder name can be typed over. */
+  readonly renaming?: boolean;
 }
 
 interface Draft {
@@ -82,12 +84,25 @@ function buildChanges(draft: Draft, element: DeepReadonly<Element>): ElementChan
   return Object.keys(changes).length === 0 ? undefined : (changes as ElementChanges);
 }
 
-export function ElementInspectorForm({ element, onSubmit }: ElementInspectorFormProps) {
+export function ElementInspectorForm({
+  element,
+  onSubmit,
+  renaming = false,
+}: ElementInspectorFormProps) {
   const fieldId = useId();
+  const nameField = useRef<HTMLInputElement>(null);
   const [baseline, setBaseline] = useState(element);
   const [draft, setDraft] = useState<Draft>(() => draftOf(element));
   const [conflict, setConflict] = useState<DeepReadonly<Element> | undefined>(undefined);
   const [error, setError] = useState<CommandErrorData | undefined>(undefined);
+
+  // A freshly authored element carries a placeholder name, so hand the field over ready to type.
+  useEffect(() => {
+    if (renaming) {
+      nameField.current?.focus();
+      nameField.current?.select();
+    }
+  }, [renaming]);
 
   const dirty = !sameDraft(normalizeDraft(draft), draftOf(baseline));
 
@@ -169,6 +184,7 @@ export function ElementInspectorForm({ element, onSubmit }: ElementInspectorForm
       <div className="element-form__field">
         <label htmlFor={`${fieldId}-name`}>Name</label>
         <input
+          ref={nameField}
           id={`${fieldId}-name`}
           value={draft.name}
           onChange={(event) => updateField('name')(event.target.value)}
@@ -200,9 +216,8 @@ export function ElementInspectorForm({ element, onSubmit }: ElementInspectorForm
           id={`${fieldId}-tags`}
           value={draft.tags}
           onChange={(event) => updateField('tags')(event.target.value)}
-          aria-describedby={`${fieldId}-tags-hint`}
+          placeholder="tag, tag"
         />
-        <small id={`${fieldId}-tags-hint`}>Separate tags with commas.</small>
       </div>
 
       {error === undefined ? null : (
@@ -218,9 +233,7 @@ export function ElementInspectorForm({ element, onSubmit }: ElementInspectorForm
         <button type="button" onClick={resetDraft} disabled={!dirty}>
           Cancel
         </button>
-        <span className="element-form__state">
-          {dirty ? 'Unsaved draft' : 'Matches current model'}
-        </span>
+        {dirty ? <span className="element-form__state">Unsaved draft</span> : null}
       </div>
     </form>
   );

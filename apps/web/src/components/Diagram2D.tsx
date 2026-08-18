@@ -6,13 +6,17 @@ import {
   Controls,
   MarkerType,
   ReactFlow,
+  type Connection,
   type Edge,
   type NodeChange,
   type NodeTypes,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import type { ViewItemMove } from '@cd3/domain';
 import type { ProjectedView2D } from '@cd3/layout';
 
+import { PALETTE_MIME } from '../editor/palette';
+import { movesCollide } from '../editor/placement';
 import { DatumNode, type DatumFlowNode } from './DatumNode';
 
 export interface Diagram2DProps {
@@ -23,6 +27,13 @@ export interface Diagram2DProps {
   readonly selectedElementIds: readonly string[];
   readonly onSelect: (elementId: string | undefined, additive?: boolean) => void;
   readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
+  /** Palette drop, reported in placement space so the caller stays renderer-neutral. */
+  readonly onDropPaletteEntry: (entryId: string, placement: { x: number; y: number }) => void;
+  readonly onConnectElements: (sourceElementId: string, targetElementId: string) => void;
+  /** Connect tool disables dragging, so a click reads as "pick an endpoint" and nothing else. */
+  readonly connecting: boolean;
+  /** Bumped when the caller adds something off-screen and wants the canvas to show it. */
+  readonly revealSignal: number;
 }
 
 const nodeTypes = { datum: DatumNode } satisfies NodeTypes;
@@ -37,7 +48,27 @@ export function Diagram2D({
   selectedElementIds,
   onSelect,
   onMoveItems,
+  onDropPaletteEntry,
+  onConnectElements,
+  connecting,
+  revealSignal,
 }: Diagram2DProps) {
+  const [flow, setFlow] = useState<ReactFlowInstance<DatumFlowNode, Edge> | null>(null);
+  const elementIdByItemId = useMemo(
+    () =>
+      new Map<string, string>(projection.nodes.map((node) => [node.viewItemId, node.elementId])),
+    [projection.nodes],
+  );
+  const connect = useCallback(
+    (connection: Connection) => {
+      const sourceElementId = elementIdByItemId.get(connection.source);
+      const targetElementId = elementIdByItemId.get(connection.target);
+      if (sourceElementId !== undefined && targetElementId !== undefined) {
+        onConnectElements(sourceElementId, targetElementId);
+      }
+    },
+    [elementIdByItemId, onConnectElements],
+  );
   const selectedElements = useMemo(() => new Set<string>(selectedElementIds), [selectedElementIds]);
   const canonicalNodes = useMemo<DatumFlowNode[]>(
     () =>
@@ -48,7 +79,7 @@ export function Diagram2D({
         width: node.width,
         height: node.height,
         selected: selectedElements.has(node.elementId),
-        draggable: true,
+        draggable: !connecting,
         connectable: false,
         selectable: true,
         focusable: true,
@@ -57,12 +88,13 @@ export function Diagram2D({
           kind: node.kind,
           name: node.label ?? node.name,
           ...(node.technology === undefined ? {} : { technology: node.technology }),
+          ...(node.color === undefined ? {} : { color: node.color }),
           external: node.tags.includes('external'),
         },
         style: { width: node.width, height: node.height },
         ariaLabel: `${node.name}, ${node.kind}`,
       })),
-    [projection.nodes, selectedElements],
+    [connecting, projection.nodes, selectedElements],
   );
 
   // Transient renderer state. Pointer movement writes here and nowhere else, so no domain command,
@@ -75,9 +107,24 @@ export function Diagram2D({
     setNodes(canonicalNodes);
   }, [canonicalNodes]);
 
+  useEffect(() => {
+    if (revealSignal > 0 && flow !== null) {
+      void flow.fitView({ padding: 0.18, duration: 250 });
+    }
+  }, [flow, revealSignal]);
+
   const handleNodesChange = useCallback((changes: NodeChange<DatumFlowNode>[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
   }, []);
+
+  const placedItems = useMemo(
+    () =>
+      projection.nodes.map((node) => ({
+        itemId: node.viewItemId,
+        rect: { x: node.x, y: node.y, width: node.width, height: node.height },
+      })),
+    [projection.nodes],
+  );
 
   const handleNodeDragStop = useCallback(
     (_event: unknown, _node: DatumFlowNode, draggedNodes: DatumFlowNode[]) => {
@@ -92,14 +139,16 @@ export function Diagram2D({
         return canonical === undefined || canonical.x !== move.x || canonical.y !== move.y;
       });
 
-      if (moved) {
+      // A block dropped on top of another would hide it, so the drag is simply not committed and
+      // the preview below snaps the node back to its canonical placement.
+      if (moved && !movesCollide(moves, placedItems)) {
         onMoveItems(moves);
       }
       // Reset unconditionally. An accepted command replaces `canonicalNodes` and the effect above
       // re-synchronizes; a rejected one leaves it untouched, so this is what snaps the preview back.
       setNodes(canonicalNodes);
     },
-    [canonicalNodes, onMoveItems, projection.nodes],
+    [canonicalNodes, onMoveItems, placedItems, projection.nodes],
   );
 
   const edges = useMemo<Edge[]>(
@@ -130,6 +179,7 @@ export function Diagram2D({
             strokeWidth: emphasized ? 2.4 : 1.5,
             strokeDasharray: edge.interaction === 'asynchronous' ? '6 4' : undefined,
           },
+          // SVG text cannot inherit a CSS custom property, so this mirrors --t-small by hand.
           labelStyle: {
             fill: '#425159',
             fontSize: 11,
@@ -144,20 +194,42 @@ export function Diagram2D({
   );
 
   return (
-    <section className="diagram-surface" aria-label={`${projection.name} 2D diagram`}>
+    <section
+      className="diagram-surface"
+      aria-label={`${projection.name} 2D diagram`}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes(PALETTE_MIME)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(event) => {
+        const entryId = event.dataTransfer.getData(PALETTE_MIME);
+        if (entryId === '' || flow === null) {
+          return;
+        }
+        event.preventDefault();
+        onDropPaletteEntry(
+          entryId,
+          flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+        );
+      }}
+    >
       <ReactFlow<DatumFlowNode, Edge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onInit={setFlow}
         onNodesChange={handleNodesChange}
         onEdgesChange={() => undefined}
         onNodeDragStop={handleNodeDragStop}
+        onConnect={connect}
         onNodeClick={(event, node) =>
           onSelect(node.data.elementId, event.ctrlKey || event.metaKey || event.shiftKey)
         }
         onPaneClick={() => onSelect(undefined)}
-        nodesDraggable
-        nodesConnectable={false}
+        nodesDraggable={!connecting}
+        nodesConnectable
         elementsSelectable
         fitView
         fitViewOptions={{ padding: 0.18, minZoom: 0.35, maxZoom: 1.15 }}
@@ -174,11 +246,6 @@ export function Diagram2D({
         />
         <Controls position="bottom-right" showInteractive={false} />
       </ReactFlow>
-      <div className="view-datum" aria-hidden="true">
-        <span>{projection.type} view</span>
-        <span>{projection.nodes.length} elements</span>
-        <span>{projection.edges.length} relationships</span>
-      </div>
     </section>
   );
 }

@@ -73,10 +73,9 @@ export function EditorToolbar() {
   useHistoryShortcuts(undo, redo);
 
   return (
-    <div className="history-controls" role="group" aria-label="Editing history">
+    <div className="segmented segmented--glyph" role="group" aria-label="Editing history">
       <button
         type="button"
-        className="history-button"
         onClick={undo}
         disabled={undoDepth === 0}
         aria-label={labels.undo}
@@ -86,7 +85,6 @@ export function EditorToolbar() {
       </button>
       <button
         type="button"
-        className="history-button"
         onClick={redo}
         disabled={redoDepth === 0}
         aria-label={labels.redo}

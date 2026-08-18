@@ -156,11 +156,13 @@ describe.sequential('CD3 workspace shell', () => {
 
     expect(screen.getByRole('banner')).toHaveTextContent('CD3');
     expect(screen.getByRole('banner')).toHaveTextContent('Northstar Commerce');
-    expect(screen.getByText('Sample fixture · local session')).toBeVisible();
+    expect(screen.queryByLabelText('Save state')).not.toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Model explorer' })).toBeVisible();
     expect(screen.getByRole('main')).toBeVisible();
     expect(screen.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
-    expect(screen.getByRole('status')).toHaveTextContent('12 elements');
+    expect(screen.getByRole('status', { name: 'Workspace status' })).toHaveTextContent(
+      '12 elements',
+    );
 
     expect(screen.getByRole('button', { name: '2D diagram view' })).toHaveAttribute(
       'aria-pressed',
@@ -222,9 +224,7 @@ describe.sequential('CD3 workspace shell', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
 
     expect(screen.getByTestId('2d-selection')).toHaveTextContent('none');
-    expect(
-      screen.getByText('Select an element to inspect its architecture details.'),
-    ).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Nothing selected' })).toBeVisible();
   });
 
   it('reports the layout worker as unavailable when its probe rejects', async () => {
@@ -251,7 +251,7 @@ describe.sequential('CD3 workspace shell', () => {
     expect(screen.getByTestId('2d-order-service-position')).toHaveTextContent('1234,432');
   });
 
-  it('reports local edits only while the project differs from the loaded fixture', async () => {
+  it('says nothing about saving until an edit needs saving', async () => {
     const user = userEvent.setup();
     renderApp(
       <>
@@ -260,15 +260,17 @@ describe.sequential('CD3 workspace shell', () => {
       </>,
     );
 
-    expect(screen.getByText('Sample fixture · local session')).toBeVisible();
+    expect(screen.queryByLabelText('Save state')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Move Order Service through store' }));
 
-    expect(screen.getByText('Local edits · not persisted')).toBeVisible();
+    expect(screen.getByLabelText('Save state')).toHaveTextContent('Saving');
 
+    // Undo is another change to persist, so the indicator stays: the resting state is "no edits
+    // since load", not "no edits at all".
     await user.click(screen.getByRole('button', { name: /^Undo/ }));
 
-    expect(screen.getByText('Sample fixture · local session')).toBeVisible();
+    expect(screen.getByLabelText('Save state')).toBeVisible();
   });
 
   it('turns one accepted drop into one undoable history entry', async () => {
@@ -302,7 +304,6 @@ describe.sequential('CD3 workspace shell', () => {
 
     expect(screen.getByTestId('2d-selection-set')).toHaveTextContent('order-service,shopper');
     expect(screen.getByTestId('2d-selection')).toHaveTextContent('shopper');
-    expect(screen.getByRole('status')).toHaveTextContent('Shopper +1 more');
     expect(
       within(screen.getByRole('complementary', { name: 'Inspector' })).getByRole('heading', {
         name: 'Shopper',
@@ -375,7 +376,7 @@ describe.sequential('CD3 workspace shell', () => {
 
     expect(screen.getByRole('treeitem', { name: 'Fulfilment Service, Container' })).toBeVisible();
     expect(screen.getByLabelText('Name')).toHaveValue('Fulfilment Service');
-    expect(screen.getByText('Local edits · not persisted')).toBeVisible();
+    expect(screen.getByLabelText('Save state')).toHaveTextContent('Saving');
 
     await user.click(screen.getByRole('button', { name: /^Undo/ }));
 

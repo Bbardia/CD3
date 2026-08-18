@@ -7,6 +7,8 @@ export interface DatumNodeData extends Record<string, unknown> {
   readonly name: string;
   readonly technology?: string;
   readonly external: boolean;
+  /** Author-chosen accent; falls back to the kind rail colour from the stylesheet. */
+  readonly color?: string;
 }
 
 export type DatumFlowNode = Node<DatumNodeData, 'datum'>;
@@ -25,7 +27,11 @@ export const DatumNode = memo(function DatumNode({ data, selected }: NodeProps<D
       aria-label={`${data.name}, ${kindLabel[data.kind]}`}
     >
       <Handle type="target" position={Position.Left} className="datum-node__handle" />
-      <span className="datum-node__rail" aria-hidden="true" />
+      <span
+        className="datum-node__rail"
+        aria-hidden="true"
+        {...(data.color === undefined ? {} : { style: { background: data.color } })}
+      />
       <div className="datum-node__body">
         <div className="datum-node__eyebrow">
           <span>{kindLabel[data.kind]}</span>

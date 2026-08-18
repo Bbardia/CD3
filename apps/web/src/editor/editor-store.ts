@@ -15,6 +15,8 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { isWorkspaceViewId, type WorkspaceViewId } from '../workspace';
 
 export type EditorMode = '2d' | '3d';
+/** Pointer tool shared by both canvases: select and move, or connect two elements. */
+export type EditorTool = 'connect' | 'select';
 
 export interface CommandErrorData {
   readonly code: DomainCommandErrorCode;
@@ -27,6 +29,7 @@ export interface EditorState {
   readonly primarySelectedElementId?: ElementId | undefined;
   readonly activeViewId: WorkspaceViewId;
   readonly mode: EditorMode;
+  readonly tool: EditorTool;
   readonly lastCommandError?: CommandErrorData | undefined;
 
   readonly execute: (command: DomainCommand) => void;
@@ -39,6 +42,7 @@ export interface EditorState {
   readonly toggleSelection: (elementId: ElementId) => void;
   readonly setActiveView: (viewId: WorkspaceViewId) => void;
   readonly setMode: (mode: EditorMode) => void;
+  readonly setTool: (tool: EditorTool) => void;
   readonly clearError: () => void;
 }
 
@@ -147,6 +151,7 @@ export function createEditorStore({
     primarySelectedElementId: undefined,
     activeViewId: validatedActiveViewId,
     mode,
+    tool: 'select',
     lastCommandError: undefined,
 
     execute: (command) => {
@@ -237,6 +242,9 @@ export function createEditorStore({
     },
     setMode: (nextMode) => {
       set((state) => (state.mode === nextMode ? state : { ...state, mode: nextMode }));
+    },
+    setTool: (nextTool) => {
+      set((state) => (state.tool === nextTool ? state : { ...state, tool: nextTool }));
     },
     clearError: () => {
       set((state) =>
