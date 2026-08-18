@@ -594,23 +594,39 @@ function Inspector({
             </button>
           </div>
 
-          <section className="inspector-section">
-            <h3>Definition</h3>
+          <details className="inspector-section" open>
+            <summary className="inspector-section__summary">
+              <span className="tree-group__caret" aria-hidden="true">
+                ▶
+              </span>
+              <h3>Definition</h3>
+            </summary>
             <ElementInspectorForm
               key={element.id}
               element={element}
               renaming={element.id === renamingElementId}
               onSubmit={(changes) => onUpdateElement(element.id, changes)}
             />
-          </section>
+          </details>
 
-          <section className="inspector-section">
-            <h3>Appearance</h3>
+          <details className="inspector-section" open>
+            <summary className="inspector-section__summary">
+              <span className="tree-group__caret" aria-hidden="true">
+                ▶
+              </span>
+              <h3>Appearance</h3>
+            </summary>
             <AppearanceControl element={element} onUpdateElement={onUpdateElement} />
-          </section>
+          </details>
 
-          <section className="inspector-section">
-            <h3>Relationships</h3>
+          <details className="inspector-section" open>
+            <summary className="inspector-section__summary">
+              <span className="tree-group__caret" aria-hidden="true">
+                ▶
+              </span>
+              <h3>Relationships</h3>
+              <span className="inspector-section__count">{relationships.length}</span>
+            </summary>
             {relationships.length === 0 ? (
               <p className="quiet-copy">No relationships.</p>
             ) : (
@@ -640,7 +656,7 @@ function Inspector({
               project={project}
               onConnect={(targetId) => onConnect(element.id, targetId, 'Uses')}
             />
-          </section>
+          </details>
 
           <section className="inspector-section inspector-section--datum">
             <div className="inspector-actions">

@@ -248,7 +248,7 @@ button:focus-visible,
 }
 
 .explorer-section > h3,
-.inspector-section > h3 {
+.inspector-section h3 {
   font-family: var(--mono);
   font-size: var(--t-micro);
   line-height: 14px;
@@ -1018,10 +1018,44 @@ button:focus-visible,
   border-bottom: 1px solid var(--divider);
 }
 
-.inspector-section > h3 {
-  margin-bottom: 8px;
+.inspector-section__summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   padding-top: 3px;
+  margin-bottom: 8px;
   border-top: 2px solid #bac8c2;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.inspector-section__summary::-webkit-details-marker {
+  display: none;
+}
+
+.inspector-section__summary:hover h3 {
+  color: var(--ink);
+}
+
+details[open] > .inspector-section__summary .tree-group__caret {
+  transform: rotate(90deg);
+}
+
+details:not([open]).inspector-section > .inspector-section__summary {
+  margin-bottom: 0;
+}
+
+.inspector-section__summary .tree-group__caret {
+  color: var(--quiet);
+}
+
+.inspector-section__count {
+  margin-left: auto;
+  color: var(--quiet);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
 }
 
 .inspector-section p {
