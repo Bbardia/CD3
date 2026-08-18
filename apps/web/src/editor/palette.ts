@@ -1,6 +1,6 @@
 import type { ElementInput, ReadonlyProject, ViewType } from '@cd3/domain';
 
-import type { SpatialModelKey } from '../components/spatial-models';
+import type { SpatialModelKey } from '../components/spatial-icon';
 
 /** Payload type used by the object palette's HTML drag and drop. */
 export const PALETTE_MIME = 'application/x-cd3-palette';
@@ -25,6 +25,10 @@ export const paletteEntries: readonly PaletteEntry[] = [
   { id: 'queue', label: 'Event stream', technology: 'Message broker', tags: ['messaging'] },
   { id: 'browser', label: 'Web app', technology: 'Web frontend', tags: ['web'] },
   { id: 'worker', label: 'Worker', technology: 'Background worker', tags: ['worker'] },
+  { id: 'storage', label: 'Object storage', technology: 'Object storage', tags: ['storage'] },
+  { id: 'analytics', label: 'Analytics', technology: 'Metrics dashboard', tags: ['analytics'] },
+  { id: 'lock', label: 'Auth service', technology: 'Identity provider', tags: ['auth'] },
+  { id: 'mobile', label: 'Mobile app', technology: 'Mobile client', tags: ['mobile'] },
   { id: 'cloud', label: 'External system', technology: 'External service', tags: ['external'] },
   { id: 'system', label: 'System', technology: 'Software system', tags: ['software-system'] },
   { id: 'component', label: 'Component', technology: 'Application module', tags: ['component'] },

@@ -2,20 +2,9 @@ import type { ReactNode } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import type { ViewNode3D } from '@cd3/layout';
 
-/** Isometric prop sitting on top of an element block, picked from model metadata. */
-export type SpatialModelKey =
-  | 'browser'
-  | 'cloud'
-  | 'component'
-  | 'database'
-  | 'gateway'
-  | 'person'
-  | 'queue'
-  | 'server'
-  | 'system'
-  | 'worker';
+import { modelKeyFor, type SpatialModelKey } from './spatial-icon';
 
-type ModelNode = Pick<ViewNode3D, 'kind' | 'tags'> & { readonly technology?: string | undefined };
+export { modelKeyFor, type SpatialModelKey } from './spatial-icon';
 
 /** Colour roles every prop is painted from, so a model reads as one object, not a silhouette. */
 type Tone = 'accent' | 'body' | 'dark' | 'light';
@@ -38,44 +27,20 @@ type ModelPart =
       readonly rotation?: Vector;
     };
 
-const KEYWORD_MODELS: readonly (readonly [RegExp, SpatialModelKey])[] = [
-  [/database|postgre|mysql|sql|mongo|redis|dynamo|storage|data store/, 'database'],
-  [/messaging|queue|stream|event|kafka|nats|rabbit|pubsub|bus/, 'queue'],
-  [/web|browser|frontend|spa|react|angular|vue|console|ui/, 'browser'],
-  [/api|gateway|edge|proxy|ingress|router/, 'gateway'],
-  [/worker|job|batch|cron|scheduler|pipeline/, 'worker'],
-];
-
-/** Chooses a prop from tags and technology, falling back to the C4 element kind. */
-export function modelKeyFor(node: ModelNode): SpatialModelKey {
-  if (node.kind === 'person') {
-    return 'person';
-  }
-  // An external system is a black box: its technology should not leak into the prop.
-  if (node.kind === 'softwareSystem' && node.tags.includes('external')) {
-    return 'cloud';
-  }
-  const haystack = `${node.tags.join(' ')} ${node.technology ?? ''}`.toLowerCase();
-  const keyword = KEYWORD_MODELS.find(([pattern]) => pattern.test(haystack));
-  if (keyword !== undefined) {
-    return keyword[1];
-  }
-  if (node.kind === 'softwareSystem') {
-    return 'system';
-  }
-  return node.kind === 'component' ? 'component' : 'server';
-}
-
 /** Each prop carries its own palette: technology reads from the object, C4 kind from the tile. */
 const PALETTES: Readonly<Record<SpatialModelKey, Readonly<Record<Tone, string>>>> = {
+  analytics: { body: '#1f9db0', accent: '#54c4d4', light: '#c8eef4', dark: '#116575' },
   browser: { body: '#54687d', accent: '#3f8fd8', light: '#f3f7fb', dark: '#2c4a63' },
   cloud: { body: '#cfe0f2', accent: '#a3c4ea', light: '#eef5fc', dark: '#7d9dc0' },
   component: { body: '#4c3a8f', accent: '#6a4fd0', light: '#c9bcf2', dark: '#2f2263' },
   database: { body: '#4f7fd4', accent: '#7ba5ea', light: '#c9dcf8', dark: '#2e4d8c' },
   gateway: { body: '#6f5bd0', accent: '#9c8ce7', light: '#ded7f8', dark: '#403289' },
+  lock: { body: '#b5484a', accent: '#d9776f', light: '#f4d5d0', dark: '#7d2a2e' },
+  mobile: { body: '#3d4c59', accent: '#5fa8e8', light: '#eef4f9', dark: '#26313b' },
   person: { body: '#b4531a', accent: '#e08a3c', light: '#f7dab6', dark: '#7d3708' },
   queue: { body: '#d9a13a', accent: '#efc271', light: '#f7e3b8', dark: '#8c6215' },
   server: { body: '#54748f', accent: '#3fae86', light: '#e4edf4', dark: '#325069' },
+  storage: { body: '#9a6b42', accent: '#c08e5d', light: '#ecd9c2', dark: '#6b452a' },
   system: { body: '#5c7794', accent: '#8ba5bf', light: '#dce6ef', dark: '#385470' },
   worker: { body: '#2fa08a', accent: '#66c8b3', light: '#c6ede4', dark: '#196857' },
 };
@@ -108,6 +73,13 @@ function cogTooth(index: number): ModelPart {
 
 // ponytail: procedural low-poly primitives, no glTF pipeline until real icon art exists.
 const MODELS: Readonly<Record<SpatialModelKey, readonly ModelPart[]>> = {
+  // Three rising columns on a plinth.
+  analytics: [
+    box('light', [0.62, 0.06, 0.4], [0, 0.04, 0]),
+    box('accent', [0.13, 0.2, 0.13], [-0.18, 0.17, 0]),
+    box('body', [0.13, 0.34, 0.13], [0, 0.24, 0]),
+    box('dark', [0.13, 0.48, 0.13], [0.18, 0.31, 0]),
+  ],
   // A browser window on a stand: light pane, coloured title bar, dark neck.
   browser: [
     box('light', [0.78, 0.5, 0.07], [0, 0.44, 0.01], [-0.12, 0, 0]),
@@ -133,6 +105,18 @@ const MODELS: Readonly<Record<SpatialModelKey, readonly ModelPart[]>> = {
     mesh('dark', <cylinderGeometry args={[0.265, 0.265, 0.025, 20]} />, [0, 0.36, 0]),
     mesh('accent', <cylinderGeometry args={[0.26, 0.26, 0.15, 20]} />, [0, 0.45, 0]),
     mesh('light', <cylinderGeometry args={[0.2, 0.2, 0.02, 20]} />, [0, 0.53, 0]),
+  ],
+  // A padlock: body below, shackle arcing over it.
+  lock: [
+    box('body', [0.38, 0.3, 0.2], [0, 0.17, 0]),
+    box('light', [0.07, 0.12, 0.03], [0, 0.17, 0.11]),
+    mesh('dark', <torusGeometry args={[0.13, 0.035, 8, 16, Math.PI]} />, [0, 0.32, 0]),
+  ],
+  // A phone: dark slab, light screen, home dot.
+  mobile: [
+    box('dark', [0.28, 0.52, 0.07], [0, 0.28, 0]),
+    box('light', [0.23, 0.4, 0.02], [0, 0.31, 0.035]),
+    mesh('accent', <sphereGeometry args={[0.02, 8, 6]} />, [0, 0.09, 0.045]),
   ],
   // A rack-mount router: body, lit port strip, two aerials.
   gateway: [
@@ -161,6 +145,12 @@ const MODELS: Readonly<Record<SpatialModelKey, readonly ModelPart[]>> = {
     box('light', [0.38, 0.06, 0.03], [0, 0.29, 0.23]),
     box('light', [0.38, 0.06, 0.03], [0, 0.14, 0.23]),
     mesh('accent', <sphereGeometry args={[0.035, 8, 6]} />, [0.19, 0.51, 0.23]),
+  ],
+  // A crate with a proud lid.
+  storage: [
+    box('body', [0.5, 0.3, 0.4], [0, 0.16, 0]),
+    box('light', [0.56, 0.09, 0.46], [0, 0.36, 0]),
+    box('dark', [0.5, 0.05, 0.41], [0, 0.16, 0]),
   ],
   // Two boxes stacked off-centre: a system is a container of containers.
   system: [
