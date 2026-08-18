@@ -109,6 +109,7 @@ function renderDiagram(overrides: Partial<Parameters<typeof Diagram2D>[0]> = {})
       onConnectElements={vi.fn()}
       connecting={false}
       revealSignal={0}
+      onRequestAddAt={() => undefined}
       {...overrides}
     />,
   );
@@ -262,6 +263,7 @@ describe('Diagram2D drag editing', () => {
         onConnectElements={vi.fn()}
         connecting={false}
         revealSignal={0}
+        onRequestAddAt={() => undefined}
       />,
     );
 
@@ -286,6 +288,7 @@ describe('Diagram2D drag editing', () => {
         onConnectElements={vi.fn()}
         connecting={false}
         revealSignal={0}
+        onRequestAddAt={() => undefined}
       />,
     );
 

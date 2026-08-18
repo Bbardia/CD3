@@ -30,6 +30,14 @@ export interface SpatialDiagramProps {
   readonly onDropPaletteEntry: (entryId: string, placement: { x: number; y: number }) => void;
   /** Connect tool: blocks stop dragging so a click reads as "pick an endpoint" and nothing else. */
   readonly connecting: boolean;
+  /** Armed connect source, so the scene can draw a rubber band from it to the pointer. */
+  readonly pendingSourceElementId: string | undefined;
+  /** Right-click on the ground: where the pointer is on screen, and in placement space. */
+  readonly onRequestAddAt: (request: {
+    clientX: number;
+    clientY: number;
+    placement: { x: number; y: number };
+  }) => void;
   /** Bumped when the caller adds something off-screen and wants the camera to show it. */
   readonly revealSignal: number;
 }
@@ -264,14 +272,53 @@ function FlowPulses({ lines }: { readonly lines: readonly FlowLine[] }) {
 function PaletteDropTarget({
   coordinateScale,
   onDrop,
+  onRequestAddAt,
 }: {
   readonly coordinateScale: number;
   readonly onDrop: SpatialDiagramProps['onDropPaletteEntry'];
+  readonly onRequestAddAt: SpatialDiagramProps['onRequestAddAt'];
 }) {
   const { camera, gl, raycaster } = useThree();
 
   useEffect(() => {
     const canvas = gl.domElement;
+    const groundAt = (clientX: number, clientY: number) => {
+      const bounds = canvas.getBoundingClientRect();
+      raycaster.setFromCamera(
+        {
+          x: ((clientX - bounds.left) / bounds.width) * 2 - 1,
+          y: -((clientY - bounds.top) / bounds.height) * 2 + 1,
+        } as never,
+        camera,
+      );
+      return groundPoint(raycaster.ray, 0);
+    };
+    // A right-drag orbits; only a stationary right-click asks for the add menu.
+    let rightDownAt: readonly [number, number] | undefined;
+    const trackRightDown = (event: PointerEvent) => {
+      if (event.button === 2) {
+        rightDownAt = [event.clientX, event.clientY];
+      }
+    };
+    const requestMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      if (
+        rightDownAt !== undefined &&
+        Math.hypot(event.clientX - rightDownAt[0], event.clientY - rightDownAt[1]) > 6
+      ) {
+        return;
+      }
+      const point = groundAt(event.clientX, event.clientY);
+      if (point !== null) {
+        onRequestAddAt({
+          clientX: event.clientX,
+          clientY: event.clientY,
+          placement: { x: point[0] / coordinateScale, y: point[1] / coordinateScale },
+        });
+      }
+    };
+    canvas.addEventListener('pointerdown', trackRightDown);
+    canvas.addEventListener('contextmenu', requestMenu);
     const carriesEntry = (event: DragEvent): boolean =>
       event.dataTransfer?.types.includes(PALETTE_MIME) ?? false;
     const allow = (event: DragEvent) => {
@@ -303,12 +350,65 @@ function PaletteDropTarget({
     canvas.addEventListener('dragover', allow);
     canvas.addEventListener('drop', drop);
     return () => {
+      canvas.removeEventListener('pointerdown', trackRightDown);
+      canvas.removeEventListener('contextmenu', requestMenu);
       canvas.removeEventListener('dragover', allow);
       canvas.removeEventListener('drop', drop);
     };
-  }, [camera, coordinateScale, gl, onDrop, raycaster]);
+  }, [camera, coordinateScale, gl, onDrop, onRequestAddAt, raycaster]);
 
   return null;
+}
+
+/** Dashed preview from the armed connect source to wherever the pointer hovers the ground. */
+function PendingConnectLine({ from }: { readonly from: WorldPoint }) {
+  const { camera, gl, invalidate, raycaster } = useThree();
+  const [target, setTarget] = useState<WorldPoint | undefined>(undefined);
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const track = (event: PointerEvent) => {
+      const bounds = canvas.getBoundingClientRect();
+      raycaster.setFromCamera(
+        {
+          x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+          y: -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+        } as never,
+        camera,
+      );
+      const point = groundPoint(raycaster.ray, from[1]);
+      if (point !== null) {
+        setTarget([point[0], from[1], point[1]]);
+        invalidate();
+      }
+    };
+    const clear = () => {
+      setTarget(undefined);
+      invalidate();
+    };
+    canvas.addEventListener('pointermove', track);
+    canvas.addEventListener('pointerleave', clear);
+    return () => {
+      canvas.removeEventListener('pointermove', track);
+      canvas.removeEventListener('pointerleave', clear);
+    };
+  }, [camera, from, gl, invalidate, raycaster]);
+
+  if (target === undefined) {
+    return null;
+  }
+  return (
+    <Line
+      points={[from, target]}
+      color="#2c5cc5"
+      lineWidth={2}
+      dashed
+      dashSize={0.22}
+      gapSize={0.14}
+      transparent
+      opacity={0.8}
+    />
+  );
 }
 
 function centerOf(node: ViewNode3D): [number, number, number] {
@@ -392,35 +492,38 @@ function ArchitectureBlock({
   const pointerOn = (event: ThreeEvent<PointerEvent>) => groundPoint(event.ray, center[1]);
 
   return (
-    <group>
+    // The whole block — body, cap, and the prop standing on it — is one click target, so the
+    // handlers live on the group and hits on any child mesh bubble up to them.
+    <group
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(node.elementId);
+      }}
+      onPointerDown={(event) => {
+        const point = pointerOn(event);
+        if (point === null || !draggable) {
+          return;
+        }
+        event.stopPropagation();
+        captureTarget(event).setPointerCapture(event.pointerId);
+        onDragStart(node, point);
+      }}
+      onPointerMove={(event) => {
+        const point = pointerOn(event);
+        if (point !== null) {
+          onDragMove(point);
+        }
+      }}
+      onPointerUp={(event) => {
+        captureTarget(event).releasePointerCapture(event.pointerId);
+        onDragEnd();
+      }}
+    >
       <RoundedBox
         args={[node.size[0], node.size[1], node.size[2]]}
         position={center}
         radius={Math.min(0.14, node.size[1] * 0.18)}
         smoothness={3}
-        onClick={(event) => {
-          event.stopPropagation();
-          onSelect(node.elementId);
-        }}
-        onPointerDown={(event) => {
-          const point = pointerOn(event);
-          if (point === null || !draggable) {
-            return;
-          }
-          event.stopPropagation();
-          captureTarget(event).setPointerCapture(event.pointerId);
-          onDragStart(node, point);
-        }}
-        onPointerMove={(event) => {
-          const point = pointerOn(event);
-          if (point !== null) {
-            onDragMove(point);
-          }
-        }}
-        onPointerUp={(event) => {
-          captureTarget(event).releasePointerCapture(event.pointerId);
-          onDragEnd();
-        }}
       >
         <meshStandardMaterial
           color={external ? '#edf0ef' : '#f9fbfa'}
@@ -478,6 +581,8 @@ function SpatialScene({
   onDropPaletteEntry,
   connecting,
   revealSignal,
+  onRequestAddAt,
+  pendingSourceElementId,
 }: SpatialDiagramProps) {
   // Transient renderer state, exactly like the 2D drag preview: pointer movement writes here and
   // nowhere else, so no domain command, validation, or projection runs until the gesture ends.
@@ -623,6 +728,7 @@ function SpatialScene({
       <PaletteDropTarget
         coordinateScale={projection.policy.coordinateScale}
         onDrop={onDropPaletteEntry}
+        onRequestAddAt={onRequestAddAt}
       />
       <group>
         {projection.platforms.map((platform) => (
@@ -655,6 +761,21 @@ function SpatialScene({
           </group>
         ))}
         {animateFlow ? <FlowPulses lines={flowLines} /> : null}
+        {(() => {
+          if (!connecting || pendingSourceElementId === undefined) {
+            return null;
+          }
+          const source = projection.nodes.find((node) => node.elementId === pendingSourceElementId);
+          if (source === undefined) {
+            return null;
+          }
+          const center = centerOf(source);
+          return (
+            <PendingConnectLine
+              from={[center[0], center[1] + source.size[1] / 2 + 0.3, center[2]]}
+            />
+          );
+        })()}
         {projection.nodes.map((node) => (
           <ArchitectureBlock
             key={node.viewItemId}
@@ -702,7 +823,13 @@ export function SpatialDiagram(props: SpatialDiagramProps) {
           frameloop="demand"
           dpr={[1, 1.5]}
           camera={{ position: [24, 24, 24], zoom: 42, near: 0.1, far: 1000 }}
-          gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+          gl={{
+            antialias: true,
+            alpha: false,
+            powerPreference: 'high-performance',
+            // The PNG export snapshots the DOM, which reads the canvas after the frame completes.
+            preserveDrawingBuffer: true,
+          }}
           onPointerMissed={() => props.onSelect(undefined)}
         >
           <SpatialScene {...props} />

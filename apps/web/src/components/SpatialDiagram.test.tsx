@@ -91,6 +91,8 @@ describe('SpatialDiagram fallback', () => {
         onDropPaletteEntry={() => undefined}
         connecting={false}
         revealSignal={0}
+        onRequestAddAt={() => undefined}
+        pendingSourceElementId={undefined}
       />,
     );
 
@@ -116,6 +118,8 @@ describe('SpatialDiagram fallback', () => {
         onDropPaletteEntry={() => undefined}
         connecting={false}
         revealSignal={0}
+        onRequestAddAt={() => undefined}
+        pendingSourceElementId={undefined}
       />,
     );
     rerender(
@@ -128,6 +132,8 @@ describe('SpatialDiagram fallback', () => {
         onDropPaletteEntry={() => undefined}
         connecting={false}
         revealSignal={0}
+        onRequestAddAt={() => undefined}
+        pendingSourceElementId={undefined}
       />,
     );
 

@@ -16,6 +16,7 @@ import type { ViewItemMove } from '@cd3/domain';
 import type { ProjectedView2D } from '@cd3/layout';
 
 import { PALETTE_MIME } from '../editor/palette';
+import { modelKeyFor } from './spatial-icon';
 import { movesCollide } from '../editor/placement';
 import { DatumNode, type DatumFlowNode } from './DatumNode';
 
@@ -29,6 +30,12 @@ export interface Diagram2DProps {
   readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
   /** Palette drop, reported in placement space so the caller stays renderer-neutral. */
   readonly onDropPaletteEntry: (entryId: string, placement: { x: number; y: number }) => void;
+  /** Right-click on empty canvas: where the pointer is on screen, and in placement space. */
+  readonly onRequestAddAt: (request: {
+    clientX: number;
+    clientY: number;
+    placement: { x: number; y: number };
+  }) => void;
   readonly onConnectElements: (sourceElementId: string, targetElementId: string) => void;
   /** Connect tool disables dragging, so a click reads as "pick an endpoint" and nothing else. */
   readonly connecting: boolean;
@@ -52,6 +59,7 @@ export function Diagram2D({
   onConnectElements,
   connecting,
   revealSignal,
+  onRequestAddAt,
 }: Diagram2DProps) {
   const [flow, setFlow] = useState<ReactFlowInstance<DatumFlowNode, Edge> | null>(null);
   const elementIdByItemId = useMemo(
@@ -89,6 +97,7 @@ export function Diagram2D({
           name: node.label ?? node.name,
           ...(node.technology === undefined ? {} : { technology: node.technology }),
           ...(node.color === undefined ? {} : { color: node.color }),
+          icon: modelKeyFor(node),
           external: node.tags.includes('external'),
         },
         style: { width: node.width, height: node.height },
@@ -228,6 +237,16 @@ export function Diagram2D({
           onSelect(node.data.elementId, event.ctrlKey || event.metaKey || event.shiftKey)
         }
         onPaneClick={() => onSelect(undefined)}
+        onPaneContextMenu={(event) => {
+          event.preventDefault();
+          if (flow !== null && 'clientX' in event) {
+            onRequestAddAt({
+              clientX: event.clientX,
+              clientY: event.clientY,
+              placement: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            });
+          }
+        }}
         nodesDraggable={!connecting}
         nodesConnectable
         elementsSelectable

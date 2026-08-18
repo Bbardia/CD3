@@ -81,14 +81,17 @@ import { App } from './App';
 import type { Diagram2D } from './components/Diagram2D';
 import type { SpatialDiagram } from './components/SpatialDiagram';
 import { EditorStoreProvider, useEditorStore } from './editor/EditorStoreProvider';
-import { project, workspaceViewIds } from './workspace';
+import { project, workspaceViewIdsOf } from './workspace';
 
 type MockDiagram2DProps = ComponentProps<typeof Diagram2D>;
 type MockSpatialDiagramProps = ComponentProps<typeof SpatialDiagram>;
 
 function renderApp(children: ReactNode = <App />) {
   return render(
-    <EditorStoreProvider initialProject={project} initialActiveViewId={workspaceViewIds[1]}>
+    <EditorStoreProvider
+      initialProject={project}
+      initialActiveViewId={workspaceViewIdsOf(project)[1] ?? ''}
+    >
       {children}
     </EditorStoreProvider>,
   );

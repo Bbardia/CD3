@@ -20,19 +20,17 @@ import { ElementInspectorForm } from './components/ElementInspectorForm';
 import type { CommandErrorData } from './editor/editor-store';
 import { useEditorStore, useEditorStoreApi } from './editor/EditorStoreProvider';
 import { isTextEntryTarget } from './editor/keyboard';
+import { downloadDataUrl, fileStem } from './editor/project-file';
+import { ICON_LABELS, spatialModelKeys } from './components/spatial-icon';
 import { useAutosave } from './editor/useAutosave';
 import {
   DEFAULT_PLACEMENT_SIZE,
   elementFromPalette,
+  paletteEntries,
   paletteEntryById,
   uniqueId,
 } from './editor/palette';
-import {
-  getWorkspaceProjection3D,
-  getWorkspaceView,
-  workspaceViewIds,
-  type WorkspaceViewId,
-} from './workspace';
+import { getWorkspaceProjection3D, getWorkspaceView, workspaceViewIdsOf } from './workspace';
 import { probeElkLayoutWorker } from './workers/elk-worker-client';
 
 const elementKindLabel = {
@@ -84,16 +82,22 @@ function ModelExplorer({
   project,
   selectedElementId,
   selectedViewId,
+  visibleElementIds,
   onSelectElement,
   onSelectView,
   onAddPaletteEntry,
+  onCreateView,
+  onDeleteView,
 }: {
   readonly project: ReadonlyProject;
   readonly selectedElementId: ElementId | undefined;
-  readonly selectedViewId: WorkspaceViewId;
+  readonly selectedViewId: string;
+  readonly visibleElementIds: ReadonlySet<string>;
   readonly onSelectElement: (elementId: ElementId) => void;
-  readonly onSelectView: (viewId: WorkspaceViewId) => void;
+  readonly onSelectView: (viewId: string) => void;
   readonly onAddPaletteEntry: (entryId: string) => void;
+  readonly onCreateView: () => void;
+  readonly onDeleteView: (viewId: string) => void;
 }) {
   const elements = useMemo(
     () =>
@@ -133,7 +137,8 @@ function ModelExplorer({
                       role="treeitem"
                       aria-label={`${element.name}, ${elementKindLabel[element.kind]}`}
                       aria-selected={element.id === selectedElementId}
-                      className={`tree-row tree-row--${element.kind}${element.id === selectedElementId ? ' is-selected' : ''}`}
+                      title={visibleElementIds.has(element.id) ? undefined : 'Not in this view'}
+                      className={`tree-row tree-row--${element.kind}${element.id === selectedElementId ? ' is-selected' : ''}${visibleElementIds.has(element.id) ? '' : ' is-absent'}`}
                       onClick={() => onSelectElement(element.id)}
                     >
                       <span className="tree-row__marker" aria-hidden="true" />
@@ -159,31 +164,160 @@ function ModelExplorer({
         <section className="explorer-section" aria-labelledby="views-section-heading">
           <h3 id="views-section-heading">Views</h3>
           <div className="view-list">
-            {workspaceViewIds.map((viewId) => {
+            {workspaceViewIdsOf(project).map((viewId) => {
               const view = project.views[viewId];
               if (view === undefined) {
                 return null;
               }
               const current = viewId === selectedViewId;
+              const lastView = workspaceViewIdsOf(project).length === 1;
               return (
-                <button
-                  key={viewId}
-                  type="button"
-                  className={`view-row${current ? ' is-current' : ''}`}
-                  aria-current={current ? 'true' : undefined}
-                  onClick={() => onSelectView(viewId)}
-                >
-                  <span className="view-row__badge">{view.type}</span>
-                  <span>
-                    <strong>{view.name}</strong>
-                  </span>
-                </button>
+                <div key={viewId} className={`view-row${current ? ' is-current' : ''}`}>
+                  <button
+                    type="button"
+                    className="view-row__open"
+                    aria-current={current ? 'true' : undefined}
+                    onClick={() => onSelectView(viewId)}
+                  >
+                    <span className="view-row__badge">{view.type}</span>
+                    <span>
+                      <strong>{view.name}</strong>
+                    </span>
+                  </button>
+                  {lastView ? null : (
+                    <button
+                      type="button"
+                      className="icon-button view-row__delete"
+                      aria-label="Delete view"
+                      title={`Delete ${view.name}`}
+                      onClick={() => onDeleteView(viewId)}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
+          <button type="button" className="ghost-button view-list__create" onClick={onCreateView}>
+            + New view
+          </button>
         </section>
       </div>
     </nav>
+  );
+}
+
+/** Palette entries at the pointer: what a right-click on empty canvas opens. */
+function StageAddMenu({
+  x,
+  y,
+  onPick,
+  onClose,
+}: {
+  readonly x: number;
+  readonly y: number;
+  readonly onPick: (entryId: string) => void;
+  readonly onClose: () => void;
+}) {
+  const menu = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const closeOnOutside = (event: MouseEvent) => {
+      if (menu.current !== null && !menu.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={menu}
+      className="stage-add-menu"
+      style={{ left: x, top: y }}
+      role="menu"
+      aria-label="Add element here"
+    >
+      <ul>
+        {paletteEntries.map((entry) => (
+          <li key={entry.id}>
+            <button type="button" role="menuitem" onClick={() => onPick(entry.id)}>
+              <span className={`palette-glyph palette-glyph--${entry.id}`} aria-hidden="true" />
+              {entry.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ViewTitle({
+  viewId,
+  name,
+  autoEdit,
+  onRename,
+}: {
+  readonly viewId: string;
+  readonly name: string;
+  readonly autoEdit: boolean;
+  readonly onRename: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState(name);
+  const field = useRef<HTMLInputElement>(null);
+
+  // The title is the editor: the canonical name can change under it via undo or a view switch.
+  useEffect(() => {
+    setDraft(name);
+  }, [name, viewId]);
+
+  useEffect(() => {
+    if (autoEdit) {
+      field.current?.focus();
+      field.current?.select();
+    }
+  }, [autoEdit, viewId]);
+
+  const commit = () => {
+    const next = draft.trim();
+    if (next !== '' && next !== name) {
+      onRename(next);
+    } else {
+      setDraft(name);
+    }
+  };
+
+  return (
+    <h1>
+      <input
+        ref={field}
+        className="view-title"
+        aria-label="View name"
+        value={draft}
+        maxLength={120}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur();
+          }
+          if (event.key === 'Escape') {
+            setDraft(name);
+          }
+        }}
+      />
+    </h1>
   );
 }
 
@@ -197,30 +331,50 @@ function AppearanceControl({
     changes: ElementChanges,
   ) => CommandErrorData | undefined;
 }) {
-  const current =
+  const currentColor =
     typeof element.properties['color'] === 'string' ? element.properties['color'] : '';
-  const setColor = (color: string | undefined) => {
-    const { color: _dropped, ...rest } = element.properties as Record<string, JsonValue>;
-    const properties: Record<string, JsonValue> = color === undefined ? rest : { ...rest, color };
+  const currentIcon =
+    typeof element.properties['icon'] === 'string' ? element.properties['icon'] : '';
+  const setProperty = (key: 'color' | 'icon', value: string | undefined) => {
+    const { [key]: _dropped, ...rest } = element.properties as Record<string, JsonValue>;
+    const properties: Record<string, JsonValue> =
+      value === undefined ? rest : { ...rest, [key]: value };
     onUpdateElement(element.id, { properties });
   };
 
   return (
     <div className="appearance-row">
       <label>
+        <span>Icon</span>
+        <select
+          aria-label="Icon"
+          value={currentIcon}
+          onChange={(event) => {
+            setProperty('icon', event.target.value === '' ? undefined : event.target.value);
+          }}
+        >
+          <option value="">Automatic</option>
+          {spatialModelKeys.map((key) => (
+            <option key={key} value={key}>
+              {ICON_LABELS[key]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         <span>Block colour</span>
         <input
           type="color"
           aria-label="Block colour"
-          value={current === '' ? '#57a39c' : current}
-          onChange={(event) => setColor(event.target.value)}
+          value={currentColor === '' ? '#57a39c' : currentColor}
+          onChange={(event) => setProperty('color', event.target.value)}
         />
       </label>
       <button
         type="button"
         className="ghost-button"
-        disabled={current === ''}
-        onClick={() => setColor(undefined)}
+        disabled={currentColor === ''}
+        onClick={() => setProperty('color', undefined)}
       >
         Use kind colour
       </button>
@@ -360,6 +514,9 @@ function Inspector({
   onUpdateRelationship,
   onDeleteRelationship,
   renamingElementId,
+  inCurrentView,
+  onAddToView,
+  onRemoveFromView,
 }: {
   readonly project: ReadonlyProject;
   readonly selectedElementId: ElementId | undefined;
@@ -374,6 +531,9 @@ function Inspector({
   readonly onDeleteRelationship: (relationshipId: string) => void;
   /** Element just authored from the palette, whose placeholder name is ready to be typed over. */
   readonly renamingElementId: ElementId | undefined;
+  readonly inCurrentView: boolean;
+  readonly onAddToView: (elementId: ElementId) => void;
+  readonly onRemoveFromView: (elementId: ElementId) => void;
 }) {
   const element =
     selectedElementId === undefined ? undefined : ownElement(project, selectedElementId);
@@ -466,13 +626,32 @@ function Inspector({
           </section>
 
           <section className="inspector-section inspector-section--datum">
-            <button
-              type="button"
-              className="danger-button"
-              onClick={() => onDeleteElement(element.id)}
-            >
-              Delete element
-            </button>
+            <div className="inspector-actions">
+              {inCurrentView ? (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => onRemoveFromView(element.id)}
+                >
+                  Remove from view
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => onAddToView(element.id)}
+                >
+                  Add to this view
+                </button>
+              )}
+              <button
+                type="button"
+                className="danger-button"
+                onClick={() => onDeleteElement(element.id)}
+              >
+                Delete element
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -502,7 +681,16 @@ export function App() {
   const [pendingSourceId, setPendingSourceId] = useState<ElementId | undefined>(undefined);
   const [revealSignal, setRevealSignal] = useState(0);
   const [renamingElementId, setRenamingElementId] = useState<ElementId | undefined>(undefined);
+  const [freshViewId, setFreshViewId] = useState<string | undefined>(undefined);
+  const [addAt, setAddAt] = useState<
+    | { readonly x: number; readonly y: number; readonly placement: { x: number; y: number } }
+    | undefined
+  >(undefined);
   const workspaceView = useMemo(() => getWorkspaceView(project, viewId), [project, viewId]);
+  const visibleElementIds = useMemo(
+    () => new Set<string>(workspaceView.compiled.items.map((item) => item.elementId)),
+    [workspaceView.compiled.items],
+  );
   const projection3D = useMemo(
     () => (mode === '3d' ? getWorkspaceProjection3D(project, viewId) : undefined),
     [mode, project, viewId],
@@ -549,6 +737,21 @@ export function App() {
     [pendingSourceId, selectElement, setSelection, tool],
   );
 
+  const requestAddAt = useCallback(
+    (request: { clientX: number; clientY: number; placement: { x: number; y: number } }) => {
+      const stage = stageRef.current?.getBoundingClientRect();
+      if (stage === undefined) {
+        return;
+      }
+      setAddAt({
+        x: Math.min(request.clientX - stage.left, stage.width - 168),
+        y: Math.min(request.clientY - stage.top, stage.height - 240),
+        placement: request.placement,
+      });
+    },
+    [],
+  );
+
   const moveViewItems = useCallback(
     (moves: readonly ViewItemMove[]) => {
       execute({ type: 'move-view-items', viewId, moves });
@@ -591,22 +794,100 @@ export function App() {
     [execute, project, setSelection, storeApi, viewId],
   );
 
-  // Quick add has no pointer to aim with, so it parks the new element just clear of everything
-  // already placed in this view.
+  // Adds with no pointer to aim them park just clear of everything already placed in this view.
+  const parkedSpot = useCallback(() => {
+    const placements = Object.values(project.views[viewId]?.placements ?? {});
+    const right =
+      placements.length === 0 ? 0 : Math.max(...placements.map((place) => place.x + place.width));
+    const top = placements.length === 0 ? 0 : Math.min(...placements.map((place) => place.y));
+    return { x: right + 80, y: top };
+  }, [project.views, viewId]);
+
   const quickAdd = useCallback(
     (entryId: string) => {
-      const placements = Object.values(project.views[viewId]?.placements ?? {});
-      const right =
-        placements.length === 0 ? 0 : Math.max(...placements.map((place) => place.x + place.width));
-      const top = placements.length === 0 ? 0 : Math.min(...placements.map((place) => place.y));
+      const spot = parkedSpot();
       dropPaletteEntry(entryId, {
-        x: right + 80 + DEFAULT_PLACEMENT_SIZE.width / 2,
-        y: top + DEFAULT_PLACEMENT_SIZE.height / 2,
+        x: spot.x + DEFAULT_PLACEMENT_SIZE.width / 2,
+        y: spot.y + DEFAULT_PLACEMENT_SIZE.height / 2,
       });
       // Nothing aimed this drop, so re-frame the canvas rather than leave it off-screen.
       setRevealSignal((signal) => signal + 1);
     },
-    [dropPaletteEntry, project.views, viewId],
+    [dropPaletteEntry, parkedSpot],
+  );
+
+  const createView = useCallback(() => {
+    const elements = Object.values(project.elements);
+    const scope =
+      elements.find(
+        (candidate) => candidate.kind === 'softwareSystem' && !candidate.tags.includes('external'),
+      ) ?? elements[0];
+    if (scope === undefined) {
+      return;
+    }
+    const newViewId = uniqueId(project, 'view', (candidate) =>
+      Object.hasOwn(project.views, candidate),
+    );
+    execute({
+      type: 'create-view',
+      view: {
+        id: newViewId,
+        name: 'Untitled view',
+        type: 'container',
+        scopeElementId: scope.id,
+        items: {},
+        placements: {},
+        relationshipIds: [],
+      },
+    });
+    if (storeApi.getState().lastCommandError === undefined) {
+      setViewId(newViewId);
+      setFreshViewId(newViewId);
+    }
+  }, [execute, project, setViewId, storeApi]);
+
+  const deleteView = useCallback(
+    (deletedViewId: string) => {
+      execute({ type: 'delete-view', viewId: deletedViewId });
+    },
+    [execute],
+  );
+
+  const addElementToView = useCallback(
+    (elementId: ElementId) => {
+      const view = project.views[viewId];
+      if (view === undefined) {
+        return;
+      }
+      const itemId = uniqueId(project, `${viewId}-item-${elementId}`, (candidate) =>
+        Object.hasOwn(view.items, candidate),
+      );
+      const spot = parkedSpot();
+      execute({
+        type: 'add-view-item',
+        viewId,
+        itemId,
+        elementId,
+        placement: { ...spot, ...DEFAULT_PLACEMENT_SIZE },
+      });
+      if (storeApi.getState().lastCommandError === undefined) {
+        setRevealSignal((signal) => signal + 1);
+      }
+    },
+    [execute, parkedSpot, project, storeApi, viewId],
+  );
+
+  const removeElementFromView = useCallback(
+    (elementId: ElementId) => {
+      const view = project.views[viewId];
+      const itemId = Object.keys(view?.items ?? {}).find(
+        (candidate) => view?.items[candidate]?.elementId === elementId,
+      );
+      if (itemId !== undefined) {
+        execute({ type: 'remove-view-item', viewId, itemId });
+      }
+    },
+    [execute, project.views, viewId],
   );
 
   const deleteElement = useCallback(
@@ -680,6 +961,12 @@ export function App() {
   );
 
   useEffect(() => {
+    if (freshViewId !== undefined && freshViewId !== viewId) {
+      setFreshViewId(undefined);
+    }
+  }, [freshViewId, viewId]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTextEntryTarget(event.target)) {
         return;
@@ -688,6 +975,15 @@ export function App() {
         setPendingSourceId(undefined);
         setTool('select');
         setSelection([]);
+        return;
+      }
+      if ((event.key === 'v' || event.key === 'V') && !event.metaKey && !event.ctrlKey) {
+        setTool('select');
+        setPendingSourceId(undefined);
+        return;
+      }
+      if ((event.key === 'c' || event.key === 'C') && !event.metaKey && !event.ctrlKey) {
+        setTool('connect');
         return;
       }
       if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -700,7 +996,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [deleteElement, setSelection, storeApi]);
+  }, [deleteElement, setSelection, setTool, storeApi]);
 
   useEffect(() => {
     let active = true;
@@ -720,7 +1016,22 @@ export function App() {
     };
   }, []);
 
+  const replaceProject = useEditorStore((state) => state.replaceProject);
+  const stageRef = useRef<HTMLDivElement>(null);
   const saveStatus = useAutosave(project);
+  const exportPng = useCallback(() => {
+    const surface = stageRef.current?.querySelector('.diagram-surface');
+    if (!(surface instanceof HTMLElement)) {
+      return;
+    }
+    // What you see is what exports: the active canvas at double resolution on the app background.
+    void import('html-to-image')
+      .then(({ toPng }) => toPng(surface, { backgroundColor: '#f5f7f5', pixelRatio: 2 }))
+      .then((dataUrl) => {
+        downloadDataUrl(`${fileStem(project.name)}.png`, dataUrl);
+      })
+      .catch(() => window.alert('The image export failed.'));
+  }, [project.name]);
   const warningCount = workspaceView.compiled.warnings.length;
 
   return (
@@ -736,7 +1047,12 @@ export function App() {
           </div>
         </div>
         <div className="header-actions">
-          <WorkspaceMenu status={saveStatus} />
+          <WorkspaceMenu
+            project={project}
+            status={saveStatus}
+            onExportPng={exportPng}
+            onReplaceProject={replaceProject}
+          />
         </div>
       </header>
 
@@ -744,9 +1060,12 @@ export function App() {
         project={project}
         selectedElementId={selectedElementId}
         selectedViewId={viewId}
+        visibleElementIds={visibleElementIds}
         onSelectElement={selectElement}
         onSelectView={setViewId}
         onAddPaletteEntry={quickAdd}
+        onCreateView={createView}
+        onDeleteView={deleteView}
       />
 
       <main className="stage">
@@ -754,7 +1073,14 @@ export function App() {
           <div className="stage-title">
             <div>
               <span className="panel-eyebrow">{workspaceView.compiled.type} view</span>
-              <h1>{workspaceView.compiled.name}</h1>
+              <ViewTitle
+                viewId={viewId}
+                name={workspaceView.compiled.name}
+                autoEdit={viewId === freshViewId}
+                onRename={(name) => {
+                  execute({ type: 'update-view', viewId, changes: { name } });
+                }}
+              />
             </div>
           </div>
           <div className="stage-tools">
@@ -763,6 +1089,7 @@ export function App() {
               <button
                 type="button"
                 aria-label="Select and move"
+                title="Select and move (V)"
                 aria-pressed={tool === 'select'}
                 onClick={() => {
                   setTool('select');
@@ -774,6 +1101,7 @@ export function App() {
               <button
                 type="button"
                 aria-label="Connect elements"
+                title="Connect elements (C)"
                 aria-pressed={tool === 'connect'}
                 onClick={() => setTool('connect')}
               >
@@ -803,7 +1131,29 @@ export function App() {
 
         <CommandErrorBanner />
 
-        <div className="stage-canvas">
+        <div className="stage-canvas" ref={stageRef}>
+          {mode === '3d' ? (
+            <button
+              type="button"
+              className="spatial-fit"
+              aria-label="Fit view"
+              title="Fit view"
+              onClick={() => setRevealSignal((signal) => signal + 1)}
+            >
+              ⛶
+            </button>
+          ) : null}
+          {addAt === undefined ? null : (
+            <StageAddMenu
+              x={addAt.x}
+              y={addAt.y}
+              onPick={(entryId) => {
+                dropPaletteEntry(entryId, addAt.placement);
+                setAddAt(undefined);
+              }}
+              onClose={() => setAddAt(undefined)}
+            />
+          )}
           <StageQuickBar
             selectionCount={selectedElementIds.length}
             hint={
@@ -829,6 +1179,7 @@ export function App() {
               }
               connecting={tool === 'connect'}
               revealSignal={revealSignal}
+              onRequestAddAt={requestAddAt}
             />
           ) : projection3D === undefined ? null : (
             <Suspense
@@ -848,6 +1199,8 @@ export function App() {
                 onDropPaletteEntry={dropPaletteEntry}
                 connecting={tool === 'connect'}
                 revealSignal={revealSignal}
+                onRequestAddAt={requestAddAt}
+                pendingSourceElementId={pendingSourceId}
               />
             </Suspense>
           )}
@@ -864,6 +1217,9 @@ export function App() {
         onUpdateRelationship={updateRelationship}
         onDeleteRelationship={deleteRelationship}
         renamingElementId={renamingElementId}
+        inCurrentView={selectedElementId !== undefined && visibleElementIds.has(selectedElementId)}
+        onAddToView={addElementToView}
+        onRemoveFromView={removeElementFromView}
       />
 
       <footer
