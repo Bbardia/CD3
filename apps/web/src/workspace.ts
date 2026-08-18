@@ -11,18 +11,19 @@ import {
 
 export const project = northstarCommerceProject;
 
-export const workspaceViewIds = ['system-context', 'core-containers', 'order-components'] as const;
-export type WorkspaceViewId = (typeof workspaceViewIds)[number];
+/** Views belong to the loaded project, in the order its author put them in the record. */
+export function workspaceViewIdsOf(activeProject: ReadonlyProject): readonly string[] {
+  return Object.keys(activeProject.views);
+}
 
 export interface WorkspaceView {
   readonly compiled: CompiledView;
   readonly twoD: ProjectedView2D;
 }
 
-const workspaceViewIdSet = new Set<string>(workspaceViewIds);
 const deeplyFrozenProjects = new WeakSet<ReadonlyProject>();
-const workspaceViewCache = new WeakMap<ReadonlyProject, Map<WorkspaceViewId, WorkspaceView>>();
-const projection3DCache = new WeakMap<ReadonlyProject, Map<WorkspaceViewId, ProjectedView3D>>();
+const workspaceViewCache = new WeakMap<ReadonlyProject, Map<string, WorkspaceView>>();
+const projection3DCache = new WeakMap<ReadonlyProject, Map<string, ProjectedView3D>>();
 
 function isDeeplyFrozenProject(activeProject: ReadonlyProject): boolean {
   if (deeplyFrozenProjects.has(activeProject)) {
@@ -78,19 +79,15 @@ function isDeeplyFrozenProject(activeProject: ReadonlyProject): boolean {
   return true;
 }
 
-export function isWorkspaceViewId(viewId: string): viewId is WorkspaceViewId {
-  return workspaceViewIdSet.has(viewId);
-}
-
-function requireWorkspaceViewId(viewId: string): WorkspaceViewId {
-  if (!isWorkspaceViewId(viewId)) {
+function requireWorkspaceViewId(activeProject: ReadonlyProject, viewId: string): string {
+  if (!Object.hasOwn(activeProject.views, viewId) || activeProject.views[viewId] === undefined) {
     throw new RangeError(`Unsupported workspace view "${viewId}".`);
   }
   return viewId;
 }
 
 export function getWorkspaceView(activeProject: ReadonlyProject, viewId: string): WorkspaceView {
-  const workspaceViewId = requireWorkspaceViewId(viewId);
+  const workspaceViewId = requireWorkspaceViewId(activeProject, viewId);
   const cacheable = isDeeplyFrozenProject(activeProject);
   let projectCache = cacheable ? workspaceViewCache.get(activeProject) : undefined;
 
@@ -116,7 +113,7 @@ export function getWorkspaceProjection3D(
   activeProject: ReadonlyProject,
   viewId: string,
 ): ProjectedView3D {
-  const workspaceViewId = requireWorkspaceViewId(viewId);
+  const workspaceViewId = requireWorkspaceViewId(activeProject, viewId);
   const cacheable = isDeeplyFrozenProject(activeProject);
   let projectCache = cacheable ? projection3DCache.get(activeProject) : undefined;
 

@@ -12,8 +12,6 @@ import {
 } from '@cd3/domain';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-import { isWorkspaceViewId, type WorkspaceViewId } from '../workspace';
-
 export type EditorMode = '2d' | '3d';
 /** Pointer tool shared by both canvases: select and move, or connect two elements. */
 export type EditorTool = 'connect' | 'select';
@@ -27,12 +25,14 @@ export interface EditorState {
   readonly history: CommandHistory;
   readonly selectedElementIds: readonly ElementId[];
   readonly primarySelectedElementId?: ElementId | undefined;
-  readonly activeViewId: WorkspaceViewId;
+  readonly activeViewId: string;
   readonly mode: EditorMode;
   readonly tool: EditorTool;
   readonly lastCommandError?: CommandErrorData | undefined;
 
   readonly execute: (command: DomainCommand) => void;
+  /** Swaps in a different project (import, version restore) and starts history fresh. */
+  readonly replaceProject: (project: ReadonlyProject) => void;
   readonly undo: () => void;
   readonly redo: () => void;
   readonly setSelection: (
@@ -40,7 +40,7 @@ export interface EditorState {
     primary?: ElementId | undefined,
   ) => void;
   readonly toggleSelection: (elementId: ElementId) => void;
-  readonly setActiveView: (viewId: WorkspaceViewId) => void;
+  readonly setActiveView: (viewId: string) => void;
   readonly setMode: (mode: EditorMode) => void;
   readonly setTool: (tool: EditorTool) => void;
   readonly clearError: () => void;
@@ -48,7 +48,7 @@ export interface EditorState {
 
 export interface CreateEditorStoreOptions {
   readonly project: ReadonlyProject;
-  readonly activeViewId: WorkspaceViewId;
+  readonly activeViewId: string;
   readonly mode?: EditorMode;
 }
 
@@ -103,14 +103,23 @@ function equalIds(left: readonly ElementId[], right: readonly ElementId[]): bool
   );
 }
 
-function requireActiveView(project: ReadonlyProject, viewId: string): WorkspaceViewId {
-  if (!isWorkspaceViewId(viewId)) {
-    throw new RangeError(`Unsupported workspace view "${viewId}".`);
-  }
+function requireActiveView(project: ReadonlyProject, viewId: string): string {
   if (!Object.hasOwn(project.views, viewId) || project.views[viewId] === undefined) {
     throw new RangeError(`View "${viewId}" does not exist in project "${project.id}".`);
   }
   return viewId;
+}
+
+/** The active view can be deleted (or undone away); the first surviving view takes over. */
+function surviveActiveView(project: ReadonlyProject, viewId: string): string {
+  if (Object.hasOwn(project.views, viewId) && project.views[viewId] !== undefined) {
+    return viewId;
+  }
+  const [first] = Object.keys(project.views);
+  if (first === undefined) {
+    throw new RangeError(`Project "${project.id}" has no views.`);
+  }
+  return first;
 }
 
 function updateHistory(state: EditorState, history: CommandHistory): EditorState {
@@ -122,16 +131,24 @@ function updateHistory(state: EditorState, history: CommandHistory): EditorState
   const selectionChanged =
     selection.primary !== state.primarySelectedElementId ||
     !equalIds(selection.ids, state.selectedElementIds);
+  const activeViewId = surviveActiveView(history.project, state.activeViewId);
+  const viewChanged = activeViewId !== state.activeViewId;
 
-  if (history === state.history && state.lastCommandError === undefined && !selectionChanged) {
+  if (
+    history === state.history &&
+    state.lastCommandError === undefined &&
+    !selectionChanged &&
+    !viewChanged
+  ) {
     return state;
   }
-  if (!selectionChanged) {
+  if (!selectionChanged && !viewChanged) {
     return { ...state, history, lastCommandError: undefined };
   }
   return {
     ...state,
     history,
+    activeViewId,
     selectedElementIds: selection.ids,
     primarySelectedElementId: selection.primary,
     lastCommandError: undefined,
@@ -175,6 +192,16 @@ export function createEditorStore({
           };
         }
       });
+    },
+    replaceProject: (project) => {
+      set((state) => ({
+        ...state,
+        history: createCommandHistory(project),
+        selectedElementIds: Object.freeze([]),
+        primarySelectedElementId: undefined,
+        activeViewId: surviveActiveView(project, state.activeViewId),
+        lastCommandError: undefined,
+      }));
     },
     undo: () => {
       set((state) => {

@@ -8,13 +8,12 @@ import {
   type EditorState,
   type EditorStore,
 } from './editor-store';
-import type { WorkspaceViewId } from '../workspace';
 
 const EditorStoreContext = createContext<EditorStore | undefined>(undefined);
 
 export interface EditorStoreProviderProps extends PropsWithChildren {
   readonly initialProject: ReadonlyProject;
-  readonly initialActiveViewId: WorkspaceViewId;
+  readonly initialActiveViewId: string;
   readonly initialMode?: EditorMode;
 }
 

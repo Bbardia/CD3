@@ -5,7 +5,7 @@ import { App } from './App';
 import { EditorStoreProvider } from './editor/EditorStoreProvider';
 import { loadProject } from './editor/persistence';
 import './styles.css';
-import { project, workspaceViewIds } from './workspace';
+import { project, workspaceViewIdsOf } from './workspace';
 
 const rootElement = document.querySelector('#root');
 
@@ -16,11 +16,12 @@ if (!(rootElement instanceof HTMLElement)) {
 // The saved snapshot decides what the app opens with, so the first paint is already the real
 // project rather than the sample flashing before it is replaced.
 void loadProject(project).then((loaded) => {
+  const viewIds = workspaceViewIdsOf(loaded.project);
   createRoot(rootElement).render(
     <StrictMode>
       <EditorStoreProvider
         initialProject={loaded.project}
-        initialActiveViewId={workspaceViewIds[1]}
+        initialActiveViewId={viewIds[1] ?? viewIds[0] ?? ''}
       >
         <App />
       </EditorStoreProvider>

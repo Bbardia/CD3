@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { CommandErrorBanner, EditorToolbar } from './EditorToolbar';
 import { EditorStoreProvider, useEditorStore } from '../editor/EditorStoreProvider';
-import { project, workspaceViewIds } from '../workspace';
+import { project, workspaceViewIdsOf } from '../workspace';
 
 const movedItemId = 'core-containers-item-orders';
 
@@ -59,7 +59,10 @@ function CommandHarness() {
 
 function renderToolbar() {
   return render(
-    <EditorStoreProvider initialProject={project} initialActiveViewId={workspaceViewIds[1]}>
+    <EditorStoreProvider
+      initialProject={project}
+      initialActiveViewId={workspaceViewIdsOf(project)[1] ?? ''}
+    >
       <EditorToolbar />
       <CommandErrorBanner />
       <CommandHarness />

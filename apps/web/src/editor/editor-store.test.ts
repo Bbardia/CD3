@@ -5,9 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 import { createEditorStore } from './editor-store';
 import { EditorStoreProvider, useEditorStore } from './EditorStoreProvider';
-import { project, workspaceViewIds, type WorkspaceViewId } from '../workspace';
+import { project, workspaceViewIdsOf } from '../workspace';
 
-const initialActiveViewId = workspaceViewIds[1];
+const workspaceViewIds = workspaceViewIdsOf(project);
+const initialActiveViewId = workspaceViewIds[1] ?? '';
 
 function existingElementId(elementId: string) {
   const element = project.elements[elementId];
@@ -28,7 +29,7 @@ function createTestStore() {
   });
 }
 
-function projectWithoutView(viewId: WorkspaceViewId): ReadonlyProject {
+function projectWithoutView(viewId: string): ReadonlyProject {
   return {
     ...project,
     views: Object.fromEntries(
@@ -55,12 +56,40 @@ const newlyCreatedElement = {
 } as const;
 const newlyCreatedElementId = newlyCreatedElement.id as ElementId;
 
+describe('replaceProject', () => {
+  it('starts history fresh and keeps a still-existing active view', () => {
+    const store = createTestStore();
+    store.getState().execute({
+      type: 'update-element',
+      elementId: 'order-service',
+      changes: { name: 'Renamed' },
+    });
+
+    store.getState().replaceProject(project);
+
+    expect(store.getState().history.project).toEqual(project);
+    expect(store.getState().history.undoStack).toHaveLength(0);
+    expect(store.getState().selectedElementIds).toHaveLength(0);
+    expect(store.getState().activeViewId).toBe(initialActiveViewId);
+  });
+
+  it('falls back to the first view when the active one is gone from the new project', () => {
+    const store = createTestStore();
+
+    store.getState().replaceProject(projectWithoutView(initialActiveViewId));
+
+    expect(store.getState().activeViewId).toBe(
+      Object.keys(projectWithoutView(initialActiveViewId).views)[0],
+    );
+  });
+});
+
 describe('editor store', () => {
   it('rejects unsupported or project-absent initial active views', () => {
-    const unsupportedViewId = 'missing-view' as WorkspaceViewId;
+    const unsupportedViewId = 'missing-view';
 
     expect(() => createEditorStore({ project, activeViewId: unsupportedViewId })).toThrowError(
-      new RangeError('Unsupported workspace view "missing-view".'),
+      new RangeError(`View "missing-view" does not exist in project "${project.id}".`),
     );
     expect(() =>
       createEditorStore({
@@ -73,7 +102,7 @@ describe('editor store', () => {
   });
 
   it('rejects unsupported or project-absent active view changes without updating state', () => {
-    const unsupportedViewId = 'missing-view' as WorkspaceViewId;
+    const unsupportedViewId = 'missing-view';
     const store = createTestStore();
     const before = store.getState();
     let notifications = 0;
@@ -82,14 +111,14 @@ describe('editor store', () => {
     });
 
     expect(() => store.getState().setActiveView(unsupportedViewId)).toThrowError(
-      new RangeError('Unsupported workspace view "missing-view".'),
+      new RangeError(`View "missing-view" does not exist in project "${project.id}".`),
     );
     expect(store.getState()).toBe(before);
     expect(store.getState().history).toBe(before.history);
     expect(notifications).toBe(0);
     unsubscribe();
 
-    const absentViewId = workspaceViewIds[0];
+    const absentViewId = workspaceViewIds[0] ?? '';
     const storeWithoutView = createEditorStore({
       project: projectWithoutView(absentViewId),
       activeViewId: initialActiveViewId,
@@ -278,7 +307,7 @@ describe('editor store', () => {
     const history = store.getState().history;
 
     store.getState().setSelection([orderServiceId, shopperId], shopperId);
-    store.getState().setActiveView(workspaceViewIds[2]);
+    store.getState().setActiveView(workspaceViewIds[2] ?? '');
     store.getState().setMode('3d');
 
     expect(store.getState()).toMatchObject({
