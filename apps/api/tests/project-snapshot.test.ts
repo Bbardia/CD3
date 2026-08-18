@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -114,5 +114,29 @@ describe('project snapshots', () => {
     expect(rejected.statusCode).toBe(400);
     expect(rejected.json().error).toContain('Project is invalid');
     expect(loaded.json()).toEqual(northstarCommerceProject);
+  });
+});
+
+describe('production web serving', () => {
+  it('serves the built app and falls back to index.html for SPA routes', async () => {
+    const webDist = await mkdtemp(join(tmpdir(), 'cd3-webdist-'));
+    await writeFile(join(webDist, 'index.html'), '<title>CD3</title>', 'utf8');
+    process.env['CD3_WEB_DIST'] = webDist;
+    try {
+      const server = startServer();
+
+      const root = await server.inject({ method: 'GET', url: '/' });
+      const spaRoute = await server.inject({ method: 'GET', url: '/some/client/route' });
+      const missingApi = await server.inject({ method: 'GET', url: '/api/missing' });
+
+      expect(root.statusCode).toBe(200);
+      expect(root.body).toContain('CD3');
+      expect(spaRoute.statusCode).toBe(200);
+      expect(spaRoute.body).toContain('CD3');
+      expect(missingApi.statusCode).toBe(404);
+    } finally {
+      delete process.env['CD3_WEB_DIST'];
+      await rm(webDist, { force: true, recursive: true });
+    }
   });
 });

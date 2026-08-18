@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import {
@@ -15,6 +18,19 @@ export function buildServer(): FastifyInstance {
     bodyLimit: 8 * 1024 * 1024,
     logger: process.env.NODE_ENV !== 'test',
   });
+
+  // Production mode: when a built web app is present, this server is the whole application.
+  const webDist = process.env['CD3_WEB_DIST'];
+  if (webDist !== undefined && existsSync(webDist)) {
+    void server.register(fastifyStatic, { root: webDist });
+    server.setNotFoundHandler(async (request, reply) => {
+      // The SPA owns every non-API route; unknown API routes stay honest 404s.
+      if (request.url.startsWith('/api/')) {
+        return reply.code(404).send({ error: `Route ${request.url} does not exist.` });
+      }
+      return reply.sendFile('index.html');
+    });
+  }
 
   server.get('/api/health', async () => ({
     schemaVersion: 1,

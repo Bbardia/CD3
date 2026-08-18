@@ -15,8 +15,10 @@
     "dev": "concurrently -n api,web -c blue,cyan \"pnpm --filter @cd3/api dev\" \"pnpm --filter @cd3/web dev\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "dist:mac": "pnpm build && pnpm --filter @cd3/desktop dist",
     "generate:schema": "pnpm --filter @cd3/domain generate:schema",
     "lint": "eslint . --max-warnings 0",
+    "start": "node apps/api/dist/server.js",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck"
   },

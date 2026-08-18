@@ -3,5 +3,7 @@ packages:
   - packages/*
 allowBuilds:
   esbuild: true
+  electron: true
+  electron-winstaller: false
 minimumReleaseAgeExclude:
   - fastify@5.12.0

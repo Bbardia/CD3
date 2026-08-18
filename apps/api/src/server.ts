@@ -1,6 +1,13 @@
+import { fileURLToPath } from 'node:url';
+
 import { buildServer } from './app.js';
 
 const LOOPBACK_HOST = '127.0.0.1';
+
+// `pnpm start` serves the built web app from the sibling workspace unless told otherwise.
+if (process.env['CD3_WEB_DIST'] === undefined) {
+  process.env['CD3_WEB_DIST'] = fileURLToPath(new URL('../../web/dist', import.meta.url));
+}
 const DEFAULT_PORT = 3100;
 
 function readPort(rawPort: string | undefined): number {
