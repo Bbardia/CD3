@@ -20,13 +20,16 @@ export type DomainCommandErrorCode =
   | 'CASCADE_REQUIRED'
   | 'DUPLICATE_ELEMENT_ID'
   | 'DUPLICATE_RELATIONSHIP_ID'
+  | 'DUPLICATE_VIEW_ID'
   | 'DUPLICATE_VIEW_ITEM'
   | 'DUPLICATE_VIEW_ITEM_MOVE'
+  | 'ELEMENT_ALREADY_IN_VIEW'
   | 'ELEMENT_CANNOT_BE_REPARENTED'
   | 'ELEMENT_NOT_FOUND'
   | 'INVALID_COMMAND'
   | 'INVALID_COORDINATE'
   | 'INVALID_PROJECT'
+  | 'LAST_VIEW'
   | 'PARENT_ELEMENT_NOT_FOUND'
   | 'PROTECTED_ELEMENT_FIELD'
   | 'PROTECTED_VIEW_FIELD'
@@ -145,6 +148,33 @@ export interface MoveViewItemsCommand {
   readonly moves: readonly ViewItemMove[];
 }
 
+export interface CreateViewCommand {
+  readonly type: 'create-view';
+  readonly view: DeepReadonly<ViewInput>;
+}
+
+export interface DeleteViewCommand {
+  readonly type: 'delete-view';
+  readonly viewId: string;
+}
+
+/** Shows an element that already exists in the model inside one more view. */
+export interface AddViewItemCommand {
+  readonly type: 'add-view-item';
+  readonly viewId: string;
+  readonly itemId: string;
+  readonly elementId: string;
+  readonly placement: DeepReadonly<Placement2DInput>;
+  readonly label?: string;
+}
+
+/** Hides an element in one view without touching the canonical model. */
+export interface RemoveViewItemCommand {
+  readonly type: 'remove-view-item';
+  readonly viewId: string;
+  readonly itemId: string;
+}
+
 export interface UpdateViewCommand {
   readonly type: 'update-view';
   readonly viewId: string;
@@ -160,6 +190,10 @@ export type DomainCommand =
   | UpdateRelationshipCommand
   | DeleteRelationshipCommand
   | MoveViewItemsCommand
+  | CreateViewCommand
+  | DeleteViewCommand
+  | AddViewItemCommand
+  | RemoveViewItemCommand
   | UpdateViewCommand;
 
 export interface CommandResult {
@@ -738,6 +772,93 @@ function prepareDeleteRelationship(
   };
 }
 
+function prepareCreateView(project: Project, command: CreateViewCommand): PreparedCommand {
+  const view = parseView(command.view);
+  if (hasOwn(project.views, view.id)) {
+    throw new DomainCommandError('DUPLICATE_VIEW_ID', `View "${view.id}" already exists.`);
+  }
+  if (!hasOwn(project.elements, view.scopeElementId)) {
+    throw new DomainCommandError(
+      'ELEMENT_NOT_FOUND',
+      `Scope element "${view.scopeElementId}" does not exist.`,
+    );
+  }
+
+  return {
+    mutate(draft) {
+      draft.views[view.id] = view;
+    },
+  };
+}
+
+function prepareDeleteView(project: Project, command: DeleteViewCommand): PreparedCommand {
+  getView(project, command.viewId);
+  if (Object.keys(project.views).length <= 1) {
+    throw new DomainCommandError('LAST_VIEW', 'A project needs at least one view.');
+  }
+
+  return {
+    mutate(draft) {
+      delete draft.views[command.viewId];
+    },
+  };
+}
+
+function prepareAddViewItem(project: Project, command: AddViewItemCommand): PreparedCommand {
+  const view = getView(project, command.viewId);
+  getElement(project, command.elementId);
+  if (hasOwn(view.items, command.itemId)) {
+    throw new DomainCommandError(
+      'DUPLICATE_VIEW_ITEM',
+      `View item "${command.itemId}" already exists in view "${command.viewId}".`,
+    );
+  }
+  for (const itemId of Object.keys(view.items)) {
+    if (view.items[itemId]?.elementId === command.elementId) {
+      throw new DomainCommandError(
+        'ELEMENT_ALREADY_IN_VIEW',
+        `Element "${command.elementId}" already occurs in view "${command.viewId}".`,
+      );
+    }
+  }
+  const item = parseViewItem({
+    id: command.itemId,
+    elementId: command.elementId,
+    ...(command.label === undefined ? {} : { label: command.label }),
+  });
+  const placement = parsePlacement(command.placement);
+
+  return {
+    mutate(draft) {
+      const draftView = draft.views[command.viewId];
+      if (draftView !== undefined) {
+        draftView.items[item.id] = item;
+        draftView.placements[item.id] = placement;
+      }
+    },
+  };
+}
+
+function prepareRemoveViewItem(project: Project, command: RemoveViewItemCommand): PreparedCommand {
+  const view = getView(project, command.viewId);
+  if (!hasOwn(view.items, command.itemId)) {
+    throw new DomainCommandError(
+      'VIEW_ITEM_NOT_FOUND',
+      `View item "${command.itemId}" does not exist in view "${command.viewId}".`,
+    );
+  }
+
+  return {
+    mutate(draft) {
+      const draftView = draft.views[command.viewId];
+      if (draftView !== undefined) {
+        delete draftView.items[command.itemId];
+        delete draftView.placements[command.itemId];
+      }
+    },
+  };
+}
+
 function prepareMoveViewItems(project: Project, command: MoveViewItemsCommand): PreparedCommand {
   const view = getView(project, command.viewId);
   const seenItemIds = new Set<string>();
@@ -820,6 +941,14 @@ function prepareCommand(project: Project, command: DomainCommand): PreparedComma
       return prepareDeleteRelationship(project, command);
     case 'move-view-items':
       return prepareMoveViewItems(project, command);
+    case 'create-view':
+      return prepareCreateView(project, command);
+    case 'delete-view':
+      return prepareDeleteView(project, command);
+    case 'add-view-item':
+      return prepareAddViewItem(project, command);
+    case 'remove-view-item':
+      return prepareRemoveViewItem(project, command);
     case 'update-view':
       return prepareUpdateView(project, command);
     default: {

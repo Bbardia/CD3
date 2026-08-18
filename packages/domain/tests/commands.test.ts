@@ -708,6 +708,114 @@ describe('view commands', () => {
   });
 });
 
+describe('view authoring', () => {
+  const emptyView = {
+    id: 'audit',
+    type: 'container',
+    scopeElementId: 'commerce',
+    name: 'Audit view',
+    items: {},
+    placements: {},
+    relationshipIds: [],
+  } as const;
+
+  it('creates an empty view and deletes it again', () => {
+    const created = applyCommand(createProject(), { type: 'create-view', view: emptyView });
+    expect(created.project.views['audit']).toMatchObject({ name: 'Audit view' });
+    expectValid(created.project);
+
+    const deleted = applyCommand(created.project, { type: 'delete-view', viewId: 'audit' });
+    expect(Object.hasOwn(deleted.project.views, 'audit')).toBe(false);
+    expectValid(deleted.project);
+  });
+
+  it('rejects duplicate ids, missing scopes, and deleting the last view', () => {
+    expectCommandError(
+      createProject(),
+      { type: 'create-view', view: { ...emptyView, id: 'context' } },
+      'DUPLICATE_VIEW_ID',
+      'View "context" already exists.',
+    );
+    expectCommandError(
+      createProject(),
+      { type: 'create-view', view: { ...emptyView, scopeElementId: 'missing' } },
+      'ELEMENT_NOT_FOUND',
+      'Scope element "missing" does not exist.',
+    );
+
+    let lone: ReadonlyProject = createProject();
+    for (const viewId of ['containers', 'components']) {
+      lone = applyCommand(lone, { type: 'delete-view', viewId }).project;
+    }
+    expectCommandError(
+      lone,
+      { type: 'delete-view', viewId: 'context' },
+      'LAST_VIEW',
+      'A project needs at least one view.',
+    );
+  });
+
+  it('shows an existing element in a view and hides it again', () => {
+    const added = applyCommand(createProject(), {
+      type: 'add-view-item',
+      viewId: 'containers',
+      itemId: 'containers-worker',
+      elementId: 'worker',
+      placement: { x: 400, y: 100, width: 240, height: 110 },
+    });
+    expect(added.project.views['containers']?.items['containers-worker']).toEqual({
+      id: 'containers-worker',
+      elementId: 'worker',
+    });
+    expectValid(added.project);
+
+    const removed = applyCommand(added.project, {
+      type: 'remove-view-item',
+      viewId: 'containers',
+      itemId: 'containers-worker',
+    });
+    expect(
+      Object.hasOwn(removed.project.views['containers']?.items ?? {}, 'containers-worker'),
+    ).toBe(false);
+    expect(
+      Object.hasOwn(removed.project.views['containers']?.placements ?? {}, 'containers-worker'),
+    ).toBe(false);
+    expectValid(removed.project);
+  });
+
+  it('enforces one occurrence of an element per view', () => {
+    expectCommandError(
+      createProject(),
+      {
+        type: 'add-view-item',
+        viewId: 'containers',
+        itemId: 'containers-api-again',
+        elementId: 'api',
+        placement: { x: 0, y: 0, width: 240, height: 110 },
+      },
+      'ELEMENT_ALREADY_IN_VIEW',
+      'Element "api" already occurs in view "containers".',
+    );
+  });
+
+  it('restores a removed view item with its placement on undo', () => {
+    const history = applyCommandToHistory(createCommandHistory(createProject()), {
+      type: 'remove-view-item',
+      viewId: 'containers',
+      itemId: 'containers-api',
+    });
+    const undone = undoCommand(history).project;
+
+    expect(undone.views['containers']?.items['containers-api']).toBeDefined();
+    expect(undone.views['containers']?.placements['containers-api']).toEqual({
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+    });
+  });
+});
+
 describe('command history', () => {
   const deterministicCases: readonly {
     name: string;
