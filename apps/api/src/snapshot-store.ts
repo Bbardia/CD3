@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   copyFile,
   mkdir,
@@ -54,14 +55,13 @@ export async function readSnapshotVersion(id: string): Promise<Project | undefin
   if (!/^\d{1,16}$/.test(id)) {
     return undefined;
   }
-  let serialized: string;
   try {
-    serialized = await readFile(join(historyDirectory(), `${id}.c4.json`), 'utf8');
+    const serialized = await readFile(join(historyDirectory(), `${id}.c4.json`), 'utf8');
+    const result = ProjectSchema.safeParse(JSON.parse(serialized));
+    return result.success ? result.data : undefined;
   } catch {
     return undefined;
   }
-  const result = ProjectSchema.safeParse(JSON.parse(serialized));
-  return result.success ? result.data : undefined;
 }
 
 /**
@@ -92,25 +92,55 @@ export async function deleteSnapshot(): Promise<void> {
   await rm(historyDirectory(), { force: true, recursive: true });
 }
 
+/**
+ * One writer at a time. Every read-check-write span goes through this chain, so a guard can never
+ * pass against a snapshot another writer is mid-way through replacing, and the shared temporary
+ * file is never written concurrently. Rejections do not poison the chain.
+ */
+let writeChain: Promise<void> = Promise.resolve();
+
+export function withSnapshotLock<T>(task: () => Promise<T>): Promise<T> {
+  const result = writeChain.then(task);
+  writeChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+export interface StoredSnapshot {
+  readonly project: Project;
+  /** Content hash of the stored bytes; identical content always yields the identical revision. */
+  readonly revision: string;
+}
+
+function revisionOf(serialized: string): string {
+  return createHash('sha256').update(serialized).digest('hex').slice(0, 16);
+}
+
 /** Reads the stored snapshot, or undefined when nothing has been saved yet. */
-export async function readSnapshot(): Promise<Project | undefined> {
-  let serialized: string;
+export async function readSnapshot(): Promise<StoredSnapshot | undefined> {
+  // A snapshot that is unreadable, not JSON, or no longer valid against the schema is treated as
+  // absent rather than served: clients fall back instead of receiving something the domain rejects.
   try {
-    serialized = await readFile(snapshotPath(), 'utf8');
+    const serialized = await readFile(snapshotPath(), 'utf8');
+    const result = ProjectSchema.safeParse(JSON.parse(serialized));
+    return result.success ? { project: result.data, revision: revisionOf(serialized) } : undefined;
   } catch {
     return undefined;
   }
-  const result = ProjectSchema.safeParse(JSON.parse(serialized));
-  // A snapshot that no longer satisfies the schema is treated as absent rather than served: the
-  // client falls back to its own copy instead of loading a project the domain would reject.
-  return result.success ? result.data : undefined;
+}
+
+/** The current revision alone; absent exactly when readSnapshot would treat the file as absent. */
+export async function readSnapshotRevision(): Promise<string | undefined> {
+  return (await readSnapshot())?.revision;
 }
 
 /**
  * Validates and stores a snapshot. The write goes to a sibling temporary file and is renamed into
  * place, so a crash mid-write leaves the previous snapshot intact rather than a truncated one.
  */
-export async function writeSnapshot(candidate: unknown): Promise<Project> {
+export async function writeSnapshot(candidate: unknown): Promise<StoredSnapshot> {
   const result = ProjectSchema.safeParse(candidate);
   if (!result.success) {
     throw new TypeError(result.error.issues.map((issue) => issue.message).join('; '));
@@ -121,7 +151,8 @@ export async function writeSnapshot(candidate: unknown): Promise<Project> {
   await checkpointCurrentSnapshot();
   const target = snapshotPath();
   const temporary = `${target}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(result.data, null, 2)}\n`, 'utf8');
+  const serialized = `${JSON.stringify(result.data, null, 2)}\n`;
+  await writeFile(temporary, serialized, 'utf8');
   await rename(temporary, target);
-  return result.data;
+  return { project: result.data, revision: revisionOf(serialized) };
 }

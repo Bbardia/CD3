@@ -46,7 +46,8 @@ describe('project snapshots', () => {
     const loaded = await server.inject({ method: 'GET', url: '/api/project' });
 
     expect(saved.statusCode).toBe(200);
-    expect(saved.json()).toEqual({ id: northstarCommerceProject.id, status: 'saved' });
+    expect(saved.json()).toMatchObject({ id: northstarCommerceProject.id, status: 'saved' });
+    expect((saved.json() as { revision: string }).revision).toMatch(/^[0-9a-f]{16}$/);
     expect(loaded.statusCode).toBe(200);
     expect(loaded.json()).toEqual(northstarCommerceProject);
   });
@@ -114,6 +115,222 @@ describe('project snapshots', () => {
     expect(rejected.statusCode).toBe(400);
     expect(rejected.json().error).toContain('Project is invalid');
     expect(loaded.json()).toEqual(northstarCommerceProject);
+  });
+});
+
+describe('command endpoint', () => {
+  async function saveSample(server: ReturnType<typeof startServer>) {
+    const saved = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      payload: northstarCommerceProject,
+    });
+    return (saved.json() as { revision: string }).revision;
+  }
+
+  it('applies a command against the stored snapshot and bumps the revision', async () => {
+    const server = startServer();
+    const revision = await saveSample(server);
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/commands',
+      payload: {
+        command: {
+          type: 'update-element',
+          elementId: 'order-service',
+          changes: { name: 'Order Orchestrator' },
+        },
+      },
+    });
+    const body = response.json() as { applied: number; revision: string };
+
+    expect(response.statusCode).toBe(200);
+    expect(body.applied).toBe(1);
+    expect(body.revision).not.toBe(revision);
+
+    const loaded = await server.inject({ method: 'GET', url: '/api/project' });
+    expect(loaded.headers.etag).toBe(body.revision);
+    expect(
+      (loaded.json() as typeof northstarCommerceProject).elements['order-service'],
+    ).toMatchObject({ name: 'Order Orchestrator' });
+  });
+
+  it('keeps a failing batch atomic and reports the failing position', async () => {
+    const server = startServer();
+    const revision = await saveSample(server);
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/commands',
+      payload: {
+        commands: [
+          { type: 'update-element', elementId: 'order-service', changes: { name: 'Renamed' } },
+          { type: 'delete-element', elementId: 'does-not-exist' },
+        ],
+      },
+    });
+    const body = response.json() as { code: string; failedAt: number };
+
+    expect(response.statusCode).toBe(400);
+    expect(body.code).toBe('ELEMENT_NOT_FOUND');
+    expect(body.failedAt).toBe(1);
+
+    const loaded = await server.inject({ method: 'GET', url: '/api/project' });
+    expect(loaded.headers.etag).toBe(revision);
+    expect(
+      (loaded.json() as typeof northstarCommerceProject).elements['order-service'],
+    ).toMatchObject({ name: 'Order Service' });
+  });
+
+  it('rejects a stale baseRevision and a stale If-Match PUT with the current revision', async () => {
+    const server = startServer();
+    await saveSample(server);
+
+    const staleCommand = await server.inject({
+      method: 'POST',
+      url: '/api/commands',
+      payload: {
+        baseRevision: 'stale',
+        command: { type: 'delete-relationship', relationshipId: 'shopper-buys' },
+      },
+    });
+    expect(staleCommand.statusCode).toBe(409);
+    expect((staleCommand.json() as { revision: string }).revision).toBeTruthy();
+
+    const stalePut = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      headers: { 'if-match': 'stale' },
+      payload: northstarCommerceProject,
+    });
+    expect(stalePut.statusCode).toBe(409);
+  });
+
+  it('refuses to edit before any snapshot exists and rejects malformed bodies', async () => {
+    const server = startServer();
+
+    const noSnapshot = await server.inject({
+      method: 'POST',
+      url: '/api/commands',
+      payload: { command: { type: 'delete-element', elementId: 'x' } },
+    });
+    expect(noSnapshot.statusCode).toBe(409);
+
+    await saveSample(server);
+    const malformed = await server.inject({
+      method: 'POST',
+      url: '/api/commands',
+      payload: { nothing: true },
+    });
+    expect(malformed.statusCode).toBe(400);
+
+    const unknown = await server.inject({
+      method: 'POST',
+      url: '/api/commands',
+      payload: { command: { type: 'rename-element', elementId: 'order-service' } },
+    });
+    expect(unknown.statusCode).toBe(400);
+    expect((unknown.json() as { code: string }).code).toBe('INVALID_COMMAND');
+  });
+
+  it('serializes concurrent guarded writers: exactly one wins, one gets 409', async () => {
+    const server = startServer();
+    const revision = await saveSample(server);
+
+    const [put, post] = await Promise.all([
+      server.inject({
+        method: 'PUT',
+        url: '/api/project',
+        headers: { 'if-match': revision },
+        payload: { ...northstarCommerceProject, name: 'Writer A' },
+      }),
+      server.inject({
+        method: 'POST',
+        url: '/api/commands',
+        payload: {
+          baseRevision: revision,
+          command: {
+            type: 'update-element',
+            elementId: 'order-service',
+            changes: { name: 'Writer B' },
+          },
+        },
+      }),
+    ]);
+
+    const statuses = [put.statusCode, post.statusCode].sort();
+    expect(statuses).toEqual([200, 409]);
+
+    const loaded = (await server.inject({ method: 'GET', url: '/api/project' })).json() as {
+      name: string;
+      elements: Record<string, { name: string }>;
+    };
+    const winnerWasPut = put.statusCode === 200;
+    expect(winnerWasPut ? loaded.name : loaded.elements['order-service']?.name).toBe(
+      winnerWasPut ? 'Writer A' : 'Writer B',
+    );
+  });
+
+  it('rejects absurdly deep bodies with 400 instead of overflowing the stack', async () => {
+    const server = startServer();
+    await saveSample(server);
+    let deep: unknown = 1;
+    for (let i = 0; i < 4000; i += 1) {
+      deep = [deep];
+    }
+
+    const command = await server.inject({
+      method: 'POST',
+      url: '/api/commands',
+      payload: {
+        command: {
+          type: 'update-element',
+          elementId: 'order-service',
+          changes: { properties: { d: deep } },
+        },
+      },
+    });
+    const put = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      payload: { ...northstarCommerceProject, elements: { deep } },
+    });
+
+    expect(command.statusCode).toBe(400);
+    expect(put.statusCode).toBe(400);
+  });
+
+  it('treats a corrupt snapshot file as absent everywhere instead of crashing', async () => {
+    const server = startServer();
+    await saveSample(server);
+    await writeFile(join(dataDirectory, 'project.c4.json'), '{ not json', 'utf8');
+
+    expect((await server.inject({ method: 'GET', url: '/api/project' })).statusCode).toBe(404);
+    expect((await server.inject({ method: 'GET', url: '/api/project/revision' })).statusCode).toBe(
+      404,
+    );
+    expect(
+      (
+        await server.inject({
+          method: 'POST',
+          url: '/api/commands',
+          payload: { command: { type: 'delete-element', elementId: 'x' } },
+        })
+      ).statusCode,
+    ).toBe(409);
+  });
+
+  it('keeps the revision stable when identical content is written again', async () => {
+    const server = startServer();
+    const revision = await saveSample(server);
+    const again = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      payload: northstarCommerceProject,
+    });
+
+    expect((again.json() as { revision: string }).revision).toBe(revision);
   });
 });
 
