@@ -2,6 +2,7 @@ import {
   DomainCommandError,
   ProjectSchema,
   applyCommand,
+  applyCommands,
   applyCommandToHistory,
   createCommandHistory,
   redoCommand,
@@ -813,6 +814,58 @@ describe('view authoring', () => {
       width: 200,
       height: 100,
     });
+  });
+});
+
+describe('applyCommands batches', () => {
+  it('matches sequential applyCommand results exactly', () => {
+    const batch: DomainCommand[] = [
+      { type: 'update-element', elementId: 'api', changes: { name: 'Gateway API' } },
+      { type: 'delete-relationship', relationshipId: 'shopper-uses-commerce' },
+    ];
+    const sequential = batch.reduce<ReadonlyProject>(
+      (current, command) => applyCommand(current, command).project,
+      createProject(),
+    );
+
+    const batched = applyCommands(createProject(), batch).project;
+
+    expect(batched).toEqual(sequential);
+    expectValid(batched);
+  });
+
+  it('is atomic: a failure mid-batch leaves nothing to observe', () => {
+    const before = createProject();
+    const snapshot = structuredClone(before);
+
+    expect(() =>
+      applyCommands(before, [
+        { type: 'update-element', elementId: 'api', changes: { name: 'Renamed' } },
+        { type: 'delete-element', elementId: 'missing' },
+      ]),
+    ).toThrowError(DomainCommandError);
+    expect(before).toEqual(snapshot);
+  });
+
+  it('lets a later command build on an earlier one in the same batch', () => {
+    const result = applyCommands(createProject(), [
+      {
+        type: 'create-element',
+        element: element({ id: 'search', kind: 'container', parentId: 'commerce', name: 'Search' }),
+      },
+      {
+        type: 'create-relationship',
+        relationship: relationship({
+          id: 'api-uses-search',
+          sourceId: 'api',
+          targetId: 'search',
+          name: 'Queries',
+        }),
+      },
+    ]).project;
+
+    expect(result.relationships['api-uses-search']).toMatchObject({ targetId: 'search' });
+    expectValid(result);
   });
 });
 

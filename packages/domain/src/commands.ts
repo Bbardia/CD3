@@ -973,6 +973,30 @@ export function applyCommand(project: ReadonlyProject, command: DomainCommand): 
   return deepFreeze({ project: nextProject, patches, inversePatches });
 }
 
+/**
+ * Apply a whole batch against one validation boundary: the project is validated and snapshotted
+ * once, each command's own inputs are still checked by its prepare step, and the final result is
+ * validated and frozen once. This is what keeps a large batch from costing a full project
+ * validation per command; any failure throws before anything is returned, so a batch is atomic.
+ */
+export function applyCommands(
+  project: ReadonlyProject,
+  commands: readonly DomainCommand[],
+): Readonly<{ project: ReadonlyProject }> {
+  assertValidProject(project);
+  ensurePatchesEnabled();
+  let current = immutableSnapshot(project) as Project;
+  for (const command of commands) {
+    const commandSnapshot = immutableSnapshot(command) as DomainCommand;
+    const prepared = prepareCommand(current, commandSnapshot);
+    [current] = produceWithPatches(current, (draft) => {
+      prepared.mutate(draft);
+    });
+  }
+  assertValidResult(current);
+  return deepFreeze({ project: current });
+}
+
 /** Start an empty history around an already-valid canonical project. */
 export function createCommandHistory(project: ReadonlyProject): CommandHistory {
   assertValidProject(project);

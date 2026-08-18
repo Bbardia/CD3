@@ -1,6 +1,7 @@
 export {
   DomainCommandError,
   applyCommand,
+  applyCommands,
   applyCommandToHistory,
   createCommandHistory,
   executeCommand,
