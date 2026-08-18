@@ -8,3 +8,4 @@ playwright-report
 test-results
 packages/domain/schema/project.schema.json
 packages/fixtures/projects/*.c4.json
+release/

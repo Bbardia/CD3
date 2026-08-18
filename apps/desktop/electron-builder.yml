@@ -1,0 +1,22 @@
+appId: io.github.bbardia.cd3
+productName: CD3
+directories:
+  output: release
+files:
+  - dist/main.cjs
+  - package.json
+extraResources:
+  - from: ../web/dist
+    to: web
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.developer-tools
+  # Unsigned local build: open with right-click → Open the first time.
+  identity: null
+# Chromium locale packs are ~1MB each; the UI is English-only.
+electronLanguages: [en]
+npmRebuild: false
+dmg:
+  format: UDBZ
