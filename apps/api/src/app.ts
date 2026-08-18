@@ -1,6 +1,12 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 
-import { deleteSnapshot, readSnapshot, writeSnapshot } from './snapshot-store.js';
+import {
+  deleteSnapshot,
+  listSnapshotVersions,
+  readSnapshot,
+  readSnapshotVersion,
+  writeSnapshot,
+} from './snapshot-store.js';
 
 export function buildServer(): FastifyInstance {
   const server = Fastify({
@@ -34,6 +40,17 @@ export function buildServer(): FastifyInstance {
       }
       throw error;
     }
+  });
+
+  server.get('/api/project/history', async () => ({ versions: await listSnapshotVersions() }));
+
+  server.get('/api/project/history/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const snapshot = await readSnapshotVersion(id);
+    if (snapshot === undefined) {
+      return reply.code(404).send({ error: `Version "${id}" does not exist.` });
+    }
+    return snapshot;
   });
 
   server.delete('/api/project', async (_request, reply) => {

@@ -62,6 +62,44 @@ describe('project snapshots', () => {
     expect(loaded.statusCode).toBe(404);
   });
 
+  it('checkpoints the previous snapshot and serves it back as a version', async () => {
+    const server = startServer();
+    const renamed = { ...northstarCommerceProject, name: 'Northstar v2' };
+
+    await server.inject({ method: 'PUT', url: '/api/project', payload: northstarCommerceProject });
+    await server.inject({ method: 'PUT', url: '/api/project', payload: renamed });
+
+    const listed = await server.inject({ method: 'GET', url: '/api/project/history' });
+    const { versions } = listed.json() as { versions: string[] };
+    expect(versions).toHaveLength(1);
+
+    const version = await server.inject({
+      method: 'GET',
+      url: `/api/project/history/${versions[0] ?? ''}`,
+    });
+    expect(version.statusCode).toBe(200);
+    expect(version.json()).toEqual(northstarCommerceProject);
+
+    // A third save inside the checkpoint interval must not mint another version.
+    await server.inject({ method: 'PUT', url: '/api/project', payload: northstarCommerceProject });
+    const relisted = await server.inject({ method: 'GET', url: '/api/project/history' });
+    expect((relisted.json() as { versions: string[] }).versions).toHaveLength(1);
+
+    // Reset clears history with the snapshot.
+    await server.inject({ method: 'DELETE', url: '/api/project' });
+    const cleared = await server.inject({ method: 'GET', url: '/api/project/history' });
+    expect((cleared.json() as { versions: string[] }).versions).toHaveLength(0);
+  });
+
+  it('rejects a traversal-shaped version id', async () => {
+    const response = await startServer().inject({
+      method: 'GET',
+      url: '/api/project/history/..%2Fproject',
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
   it('rejects a project the domain would not accept, leaving the stored one intact', async () => {
     const server = startServer();
     await server.inject({ method: 'PUT', url: '/api/project', payload: northstarCommerceProject });
