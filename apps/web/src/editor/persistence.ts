@@ -87,6 +87,33 @@ export async function saveProject(project: ReadonlyProject): Promise<SaveOutcome
   return remote ? 'disk' : local ? 'browser' : 'failed';
 }
 
+/** Millisecond-epoch ids of the disk checkpoints, newest first. */
+export async function listRemoteVersions(): Promise<readonly string[]> {
+  try {
+    const response = await fetch(`${SNAPSHOT_URL}/history`);
+    if (!response.ok) {
+      return [];
+    }
+    const body: unknown = await response.json();
+    const versions =
+      typeof body === 'object' && body !== null && 'versions' in body ? body.versions : undefined;
+    return Array.isArray(versions)
+      ? versions.filter((version): version is string => typeof version === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function readRemoteVersion(id: string): Promise<ReadonlyProject | undefined> {
+  try {
+    const response = await fetch(`${SNAPSHOT_URL}/history/${id}`);
+    return response.ok ? parseProject(await response.json()) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Forgets every stored copy, so the next load falls back to the sample project. */
 export async function forgetProject(): Promise<void> {
   clearLocalProject();
