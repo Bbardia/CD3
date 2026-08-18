@@ -187,7 +187,7 @@ describe('renderer-neutral projections', () => {
     ).toEqual([2.5, 0, 5]);
   });
 
-  it('keeps semantic IDs/counts aligned and derives 2D/3D coordinates and hierarchy elevation', () => {
+  it('keeps semantic IDs/counts aligned and derives 2D/3D coordinates on the ground plane', () => {
     const compiled = compileView(northstarCommerceProject, 'core-containers');
     const twoD = projectViewTo2D(compiled);
     const threeD = projectViewTo3D(compiled, northstarCommerceProject.threeD.policy);
@@ -202,7 +202,14 @@ describe('renderer-neutral projections', () => {
       threeD.edges.map((edge) => edge.relationshipId),
     );
     expect(orders2D).toMatchObject({ x: 980, y: 255, width: 240, height: 130 });
-    expect(orders3D?.position).toEqual([19.6, 1.5, 5.1]);
+    // The shipped policy keeps every element on the ground plane; elevation is still derivable.
+    expect(orders3D?.position).toEqual([19.6, 0, 5.1]);
+    expect(
+      projectViewTo3D(compiled, {
+        ...northstarCommerceProject.threeD.policy,
+        elevationStep: 2,
+      }).nodes.find((node) => node.elementId === 'order-service')?.position[1],
+    ).toBe(2);
     expect(orders3D?.size[0]).toBeCloseTo(4.8);
     expect(orders3D?.size[2]).toBeCloseTo(2.6);
     expect(threeD.platforms.some((platform) => platform.viewItemId === orders3D?.viewItemId)).toBe(

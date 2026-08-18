@@ -29,6 +29,8 @@ export interface CompiledViewItem {
   readonly label?: string;
   readonly description?: Element['description'];
   readonly technology?: Element['technology'];
+  /** Optional author-chosen accent, read from the element's `color` property. */
+  readonly color?: string;
   readonly tags: readonly string[];
   readonly placement: Readonly<Placement2D>;
   /** Direct semantic parent, whether or not that parent is visible. */

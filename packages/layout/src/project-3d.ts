@@ -51,6 +51,7 @@ export function projectViewTo3D(
       ...(item.label === undefined ? {} : { label: item.label }),
       ...(item.description === undefined ? {} : { description: item.description }),
       ...(item.technology === undefined ? {} : { technology: item.technology }),
+      ...(item.color === undefined ? {} : { color: item.color }),
       tags: item.tags,
       ...(item.parentElementId === undefined ? {} : { parentElementId: item.parentElementId }),
       ...(item.parentViewItemId === undefined ? {} : { parentViewItemId: item.parentViewItemId }),
