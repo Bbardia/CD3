@@ -148,6 +148,41 @@ describe('Diagram2D authoring', () => {
     );
   });
 
+  it('opens the add menu on a double pane click, not a single one', () => {
+    const onRequestAddAt = vi.fn();
+    renderDiagram({ onRequestAddAt });
+    const flow = {
+      screenToFlowPosition: ({ x, y }: { x: number; y: number }) => ({ x: x * 2, y }),
+    };
+
+    act(() => {
+      (latestFlowProps() as unknown as { onInit: (instance: unknown) => void }).onInit(flow);
+    });
+    act(() => {
+      (
+        latestFlowProps() as unknown as {
+          onPaneClick: (event: { detail: number; clientX: number; clientY: number }) => void;
+        }
+      ).onPaneClick({ detail: 1, clientX: 100, clientY: 40 });
+    });
+
+    expect(onRequestAddAt).not.toHaveBeenCalled();
+
+    act(() => {
+      (
+        latestFlowProps() as unknown as {
+          onPaneClick: (event: { detail: number; clientX: number; clientY: number }) => void;
+        }
+      ).onPaneClick({ detail: 2, clientX: 100, clientY: 40 });
+    });
+
+    expect(onRequestAddAt).toHaveBeenCalledWith({
+      clientX: 100,
+      clientY: 40,
+      placement: { x: 200, y: 40 },
+    });
+  });
+
   it('parks node dragging while the connect tool is active', () => {
     renderDiagram({ connecting: true });
 

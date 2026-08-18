@@ -30,7 +30,7 @@ export interface Diagram2DProps {
   readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
   /** Palette drop, reported in placement space so the caller stays renderer-neutral. */
   readonly onDropPaletteEntry: (entryId: string, placement: { x: number; y: number }) => void;
-  /** Right-click on empty canvas: where the pointer is on screen, and in placement space. */
+  /** Double-click on empty canvas: where the pointer is on screen, and in placement space. */
   readonly onRequestAddAt: (request: {
     clientX: number;
     clientY: number;
@@ -236,10 +236,10 @@ export function Diagram2D({
         onNodeClick={(event, node) =>
           onSelect(node.data.elementId, event.ctrlKey || event.metaKey || event.shiftKey)
         }
-        onPaneClick={() => onSelect(undefined)}
-        onPaneContextMenu={(event) => {
-          event.preventDefault();
-          if (flow !== null && 'clientX' in event) {
+        onPaneClick={(event) => {
+          onSelect(undefined);
+          // The second click of a double-click carries detail 2: open the add menu right there.
+          if (event.detail === 2 && flow !== null) {
             onRequestAddAt({
               clientX: event.clientX,
               clientY: event.clientY,
@@ -249,6 +249,7 @@ export function Diagram2D({
         }}
         nodesDraggable={!connecting}
         nodesConnectable
+        zoomOnDoubleClick={false}
         elementsSelectable
         fitView
         fitViewOptions={{ padding: 0.18, minZoom: 0.35, maxZoom: 1.15 }}

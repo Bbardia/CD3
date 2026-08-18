@@ -32,7 +32,7 @@ export interface SpatialDiagramProps {
   readonly connecting: boolean;
   /** Armed connect source, so the scene can draw a rubber band from it to the pointer. */
   readonly pendingSourceElementId: string | undefined;
-  /** Right-click on the ground: where the pointer is on screen, and in placement space. */
+  /** Double-click on open ground: where the pointer is on screen, and in placement space. */
   readonly onRequestAddAt: (request: {
     clientX: number;
     clientY: number;
@@ -272,53 +272,14 @@ function FlowPulses({ lines }: { readonly lines: readonly FlowLine[] }) {
 function PaletteDropTarget({
   coordinateScale,
   onDrop,
-  onRequestAddAt,
 }: {
   readonly coordinateScale: number;
   readonly onDrop: SpatialDiagramProps['onDropPaletteEntry'];
-  readonly onRequestAddAt: SpatialDiagramProps['onRequestAddAt'];
 }) {
   const { camera, gl, raycaster } = useThree();
 
   useEffect(() => {
     const canvas = gl.domElement;
-    const groundAt = (clientX: number, clientY: number) => {
-      const bounds = canvas.getBoundingClientRect();
-      raycaster.setFromCamera(
-        {
-          x: ((clientX - bounds.left) / bounds.width) * 2 - 1,
-          y: -((clientY - bounds.top) / bounds.height) * 2 + 1,
-        } as never,
-        camera,
-      );
-      return groundPoint(raycaster.ray, 0);
-    };
-    // A right-drag orbits; only a stationary right-click asks for the add menu.
-    let rightDownAt: readonly [number, number] | undefined;
-    const trackRightDown = (event: PointerEvent) => {
-      if (event.button === 2) {
-        rightDownAt = [event.clientX, event.clientY];
-      }
-    };
-    const requestMenu = (event: MouseEvent) => {
-      event.preventDefault();
-      if (
-        rightDownAt !== undefined &&
-        Math.hypot(event.clientX - rightDownAt[0], event.clientY - rightDownAt[1]) > 6
-      ) {
-        return;
-      }
-      const point = groundAt(event.clientX, event.clientY);
-      if (point !== null) {
-        onRequestAddAt({
-          clientX: event.clientX,
-          clientY: event.clientY,
-          placement: { x: point[0] / coordinateScale, y: point[1] / coordinateScale },
-        });
-      }
-    };
-    canvas.addEventListener('pointerdown', trackRightDown);
-    canvas.addEventListener('contextmenu', requestMenu);
     const carriesEntry = (event: DragEvent): boolean =>
       event.dataTransfer?.types.includes(PALETTE_MIME) ?? false;
     const allow = (event: DragEvent) => {
@@ -350,12 +311,10 @@ function PaletteDropTarget({
     canvas.addEventListener('dragover', allow);
     canvas.addEventListener('drop', drop);
     return () => {
-      canvas.removeEventListener('pointerdown', trackRightDown);
-      canvas.removeEventListener('contextmenu', requestMenu);
       canvas.removeEventListener('dragover', allow);
       canvas.removeEventListener('drop', drop);
     };
-  }, [camera, coordinateScale, gl, onDrop, onRequestAddAt, raycaster]);
+  }, [camera, coordinateScale, gl, onDrop, raycaster]);
 
   return null;
 }
@@ -498,6 +457,9 @@ function ArchitectureBlock({
       onClick={(event) => {
         event.stopPropagation();
         onSelect(node.elementId);
+      }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
       }}
       onPointerDown={(event) => {
         const point = pointerOn(event);
@@ -728,8 +690,27 @@ function SpatialScene({
       <PaletteDropTarget
         coordinateScale={projection.policy.coordinateScale}
         onDrop={onDropPaletteEntry}
-        onRequestAddAt={onRequestAddAt}
       />
+      {/* Double-click on open ground asks for the add menu; blocks stop the event, so a
+          double-click on one never opens it. The plane is invisible but still raycastable. */}
+      <mesh
+        position={[center[0], -0.02, center[2]]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          onRequestAddAt({
+            clientX: event.clientX,
+            clientY: event.clientY,
+            placement: {
+              x: event.point.x / projection.policy.coordinateScale,
+              y: event.point.z / projection.policy.coordinateScale,
+            },
+          });
+        }}
+      >
+        <planeGeometry args={[groundSize * 3, groundSize * 3]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <group>
         {projection.platforms.map((platform) => (
           <mesh
