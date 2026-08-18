@@ -873,7 +873,7 @@
     "policy": {
       "coordinateScale": 0.02,
       "defaultProjection": "orthographic",
-      "elevationStep": 1.5,
+      "elevationStep": 0,
       "platformPadding": 0.75
     }
   },

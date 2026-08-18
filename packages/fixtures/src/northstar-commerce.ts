@@ -780,7 +780,8 @@ const northstarCommerceInput = {
   threeD: {
     policy: {
       coordinateScale: 0.02,
-      elevationStep: 1.5,
+      // Flat ground plane: hierarchy reads through platforms and nesting, not stacked levels.
+      elevationStep: 0,
       platformPadding: 0.75,
       defaultProjection: 'orthographic',
     },

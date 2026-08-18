@@ -157,7 +157,7 @@ export function generateSyntheticProject({ visibleElements }: GenerateSyntheticP
     threeD: {
       policy: {
         coordinateScale: 0.02,
-        elevationStep: 1.25,
+        elevationStep: 0,
         platformPadding: 0.5,
         defaultProjection: 'orthographic',
       },
