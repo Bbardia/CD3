@@ -19,6 +19,12 @@ function elementColor(element: DeepReadonly<Element>): string | undefined {
   return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color : undefined;
 }
 
+/** Author-chosen prop key stored as a plain element property; renderers decide what it maps to. */
+function elementIcon(element: DeepReadonly<Element>): string | undefined {
+  const icon = element.properties['icon'];
+  return typeof icon === 'string' && /^[a-z][a-z0-9-]{0,31}$/.test(icon) ? icon : undefined;
+}
+
 function semanticDepth(project: ReadonlyProject, element: DeepReadonly<Element>): number {
   let depth = 0;
   let current: DeepReadonly<Element> | undefined = element;
@@ -116,6 +122,7 @@ export function compileView(project: ReadonlyProject, viewId: string): CompiledV
     }
     const parentElementId = 'parentId' in element ? element.parentId : undefined;
     const color = elementColor(element);
+    const icon = elementIcon(element);
     const item: CompiledViewItem = {
       viewItemId: viewItem.id,
       elementId: element.id,
@@ -125,6 +132,7 @@ export function compileView(project: ReadonlyProject, viewId: string): CompiledV
       ...(element.description === undefined ? {} : { description: element.description }),
       ...(element.technology === undefined ? {} : { technology: element.technology }),
       ...(color === undefined ? {} : { color }),
+      ...(icon === undefined ? {} : { icon }),
       tags: [...element.tags],
       placement: { ...placement },
       ...(parentElementId === undefined ? {} : { parentElementId }),
