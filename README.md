@@ -77,6 +77,60 @@ wrapped in an Electron window, with snapshots stored under `~/Library/Applicatio
 build is unsigned: open it the first time with right-click → Open. Pushing a `v*` tag builds the DMG
 in CI and attaches it to the tag's GitHub release.
 
+## Automate
+
+The loopback API that backs the app is also its scripting surface — usable from a terminal, CI, or
+any tool on the same machine. The examples target the server from `pnpm dev` or `pnpm start` on
+`127.0.0.1:3100`; the packaged Mac app runs its own copy on a random port that stops when the app
+quits, so script against a `pnpm start` server instead.
+
+```sh
+curl 127.0.0.1:3100/api/project             # the whole project, ETag = revision
+curl 127.0.0.1:3100/api/project/revision    # {"revision":"…"} — cheap to poll
+curl -X PUT 127.0.0.1:3100/api/project -d @my.c4.json -H 'content-type: application/json'
+curl -X DELETE 127.0.0.1:3100/api/project   # forget the snapshot and its history
+curl 127.0.0.1:3100/api/project/history     # checkpoint ids, newest first
+curl 127.0.0.1:3100/api/project/history/<id> # one checkpoint, restorable via PUT
+```
+
+Edits go through `POST /api/commands` — the same validated domain commands the UI executes, so every
+rule (unique ids, containment, one occurrence per view) holds no matter who is typing:
+
+```sh
+curl -X POST 127.0.0.1:3100/api/commands -H 'content-type: application/json' -d '{
+  "commands": [
+    { "type": "create-element",
+      "element": { "id": "search", "kind": "container", "parentId": "northstar-commerce",
+                   "name": "Search", "technology": "OpenSearch", "tags": ["service"],
+                   "properties": {}, "externalRefs": [] },
+      "placeInView": { "viewId": "core-containers", "itemId": "core-containers-item-search",
+                       "placement": { "x": 1660, "y": 700, "width": 240, "height": 110 } } },
+    { "type": "create-relationship",
+      "relationship": { "id": "orders-search", "name": "Indexes orders", "sourceId": "order-service",
+                        "targetId": "search", "interaction": "asynchronous", "tags": [],
+                        "properties": {}, "externalRefs": [] },
+      "showInViewId": "core-containers" }
+  ]
+}'
+```
+
+A batch is atomic: on failure the response carries the domain error code and the failing index, and
+nothing is persisted. Command types: `create-element` (optionally `placeInView`), `update-element`,
+`delete-element` (`cascade` for descendants), `reparent-element`, `create-relationship` (optionally
+`showInViewId`), `update-relationship`, `delete-relationship`, `move-view-items`, `create-view`,
+`delete-view`, `add-view-item`, `remove-view-item`, and `update-view` — exact shapes are the
+`DomainCommand` types in `packages/domain/src/commands.ts`.
+
+Concurrency is revision-guarded. Project reads and writes (`GET`/`PUT /api/project`,
+`POST /api/commands`) return the snapshot's content-hash revision as `ETag`; pass it back as
+`baseRevision` (commands) or `If-Match` (PUT) and a write against a moved snapshot is refused with
+`409` plus the current revision instead of clobbering it — guard checks and writes are serialized
+server-side, so two concurrent writers can never both win. When restoring a checkpoint, take the
+current revision from `GET /api/project/revision`, not from the checkpoint itself. The open app
+plays by the same rules: it saves with `If-Match` and polls the revision, so a script's changes
+appear in a running app within a few seconds. If an app edit loses that race, disk wins and the
+losing copy is kept in the browser's storage under `cd3.project.conflict.v1` rather than dropped.
+
 ## Verify
 
 ```sh
