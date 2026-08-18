@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { ReadonlyProject } from '@cd3/domain';
 
 import { saveProject, type SaveOutcome } from './persistence';
 
-export type SaveStatus = 'failed' | 'idle' | 'saved-browser' | 'saved-disk' | 'saving';
+export type SaveStatus = 'conflict' | 'failed' | 'idle' | 'saved-browser' | 'saved-disk' | 'saving';
 
 const OUTCOME_STATUS: Readonly<Record<SaveOutcome, SaveStatus>> = {
   browser: 'saved-browser',
+  conflict: 'conflict',
   disk: 'saved-disk',
   failed: 'failed',
 };
@@ -18,12 +19,21 @@ const QUIET_PERIOD_MS = 600;
  * Persists the project whenever it changes. The first render is the loaded project, not an edit,
  * so it is skipped: opening the app never rewrites what it just read.
  */
-export function useAutosave(project: ReadonlyProject): SaveStatus {
+export function useAutosave(
+  project: ReadonlyProject,
+  adopted: RefObject<ReadonlyProject | null>,
+): SaveStatus {
   const [status, setStatus] = useState<SaveStatus>('idle');
   const loaded = useRef(project);
 
   useEffect(() => {
     if (project === loaded.current) {
+      return;
+    }
+    // A project adopted from disk is already on disk: re-saving it would be an echo that
+    // overwrites the conflict stash and quietly clears the "changed outside" notice.
+    if (adopted.current === project) {
+      loaded.current = project;
       return;
     }
     setStatus('saving');
@@ -40,7 +50,7 @@ export function useAutosave(project: ReadonlyProject): SaveStatus {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [project]);
+  }, [adopted, project]);
 
   return status;
 }

@@ -22,7 +22,9 @@ import { useEditorStore, useEditorStoreApi } from './editor/EditorStoreProvider'
 import { isTextEntryTarget } from './editor/keyboard';
 import { downloadDataUrl, fileStem } from './editor/project-file';
 import { ICON_LABELS, spatialModelKeys } from './components/spatial-icon';
-import { useAutosave } from './editor/useAutosave';
+import { useAutosave, type SaveStatus } from './editor/useAutosave';
+import { useRemoteSync } from './editor/useRemoteSync';
+import { stashConflictProject } from './editor/persistence';
 import {
   DEFAULT_PLACEMENT_SIZE,
   elementFromPalette,
@@ -1180,7 +1182,24 @@ export function App() {
 
   const replaceProject = useEditorStore((state) => state.replaceProject);
   const stageRef = useRef<HTMLDivElement>(null);
-  const saveStatus = useAutosave(project);
+  const adoptedProjectRef = useRef<ReadonlyProject | null>(null);
+  const saveStatus = useAutosave(project, adoptedProjectRef);
+  const saveStatusRef = useRef<SaveStatus>(saveStatus);
+  saveStatusRef.current = saveStatus;
+  const adoptExternalProject = useCallback(
+    (incoming: ReadonlyProject) => {
+      const current = storeApi.getState().history.project;
+      // A burst that lost a save conflict is stashed before disk wins, never silently dropped.
+      if (saveStatusRef.current === 'conflict') {
+        stashConflictProject(current);
+      }
+      adoptedProjectRef.current = incoming;
+      replaceProject(incoming);
+    },
+    [replaceProject, storeApi],
+  );
+  const canAdoptExternal = useCallback(() => saveStatusRef.current !== 'saving', []);
+  useRemoteSync(adoptExternalProject, canAdoptExternal);
   const exportPng = useCallback(() => {
     const surface = stageRef.current?.querySelector('.diagram-surface');
     if (!(surface instanceof HTMLElement)) {

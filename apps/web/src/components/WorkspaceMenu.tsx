@@ -6,6 +6,7 @@ import { downloadProjectFile, parseProjectFile } from '../editor/project-file';
 import type { SaveStatus } from '../editor/useAutosave';
 
 const STATUS_COPY: Readonly<Record<SaveStatus, string | undefined>> = {
+  conflict: 'Changed outside the app',
   failed: 'Not saved',
   idle: undefined,
   'saved-browser': 'Saved to this browser',
@@ -55,7 +56,7 @@ export function WorkspaceMenu({
     <>
       {copy === undefined ? null : (
         <span
-          className={`save-state${status === 'failed' ? ' save-state--failed' : ''}`}
+          className={`save-state${status === 'failed' || status === 'conflict' ? ' save-state--failed' : ''}`}
           role="status"
           aria-live="polite"
           aria-label="Save state"

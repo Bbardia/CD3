@@ -5,7 +5,17 @@ const SNAPSHOT_URL = '/api/project';
 
 /** Where the current project came from, and where the last save reached. */
 export type ProjectSource = 'browser' | 'disk' | 'sample';
-export type SaveOutcome = 'browser' | 'disk' | 'failed';
+export type SaveOutcome = 'browser' | 'conflict' | 'disk' | 'failed';
+
+/**
+ * Revision of the disk snapshot this tab last read or wrote. Saves state it as If-Match so the app
+ * can never clobber a change made outside it, and the sync poll compares against it.
+ */
+let knownRemoteRevision: string | undefined;
+
+export function remoteRevision(): string | undefined {
+  return knownRemoteRevision;
+}
 
 function parseProject(candidate: unknown): ReadonlyProject | undefined {
   const result = ProjectSchema.safeParse(candidate);
@@ -43,22 +53,68 @@ export function clearLocalProject(): void {
 export async function readRemoteProject(): Promise<ReadonlyProject | undefined> {
   try {
     const response = await fetch(SNAPSHOT_URL);
-    return response.ok ? parseProject(await response.json()) : undefined;
+    if (!response.ok) {
+      return undefined;
+    }
+    const project = parseProject(await response.json());
+    if (project !== undefined) {
+      knownRemoteRevision = response.headers.get('etag') ?? undefined;
+    }
+    return project;
   } catch {
     return undefined;
   }
 }
 
-export async function writeRemoteProject(project: ReadonlyProject): Promise<boolean> {
+/** The disk snapshot's current revision, or undefined when unreachable or absent. */
+export async function fetchRemoteRevision(): Promise<string | undefined> {
+  try {
+    const response = await fetch(`${SNAPSHOT_URL}/revision`);
+    if (!response.ok) {
+      return undefined;
+    }
+    const body: unknown = await response.json();
+    return typeof body === 'object' &&
+      body !== null &&
+      'revision' in body &&
+      typeof body.revision === 'string'
+      ? body.revision
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function writeRemoteProject(
+  project: ReadonlyProject,
+): Promise<'conflict' | 'saved' | 'unreachable'> {
+  // Never having read the disk snapshot must not mean permission to overwrite it: if one exists
+  // that this tab has not seen, yield and let the sync poll adopt it instead of clobbering.
+  if (knownRemoteRevision === undefined) {
+    const existing = await fetchRemoteRevision();
+    if (existing !== undefined) {
+      return 'conflict';
+    }
+  }
   try {
     const response = await fetch(SNAPSHOT_URL, {
       method: 'PUT',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(knownRemoteRevision === undefined ? {} : { 'if-match': knownRemoteRevision }),
+      },
       body: JSON.stringify(project),
     });
-    return response.ok;
+    if (response.status === 409) {
+      return 'conflict';
+    }
+    if (!response.ok) {
+      return 'unreachable';
+    }
+    knownRemoteRevision = response.headers.get('etag') ?? knownRemoteRevision;
+    return 'saved';
   } catch {
-    return false;
+    return 'unreachable';
   }
 }
 
@@ -84,7 +140,15 @@ export async function loadProject(
 export async function saveProject(project: ReadonlyProject): Promise<SaveOutcome> {
   const local = writeLocalProject(project);
   const remote = await writeRemoteProject(project);
-  return remote ? 'disk' : local ? 'browser' : 'failed';
+  if (remote === 'saved') {
+    return 'disk';
+  }
+  // A conflict means something outside this tab moved the snapshot; the sync poll adopts it and
+  // this burst of edits is intentionally not forced over it.
+  if (remote === 'conflict') {
+    return 'conflict';
+  }
+  return local ? 'browser' : 'failed';
 }
 
 /** Millisecond-epoch ids of the disk checkpoints, newest first. */
@@ -111,6 +175,21 @@ export async function readRemoteVersion(id: string): Promise<ReadonlyProject | u
     return response.ok ? parseProject(await response.json()) : undefined;
   } catch {
     return undefined;
+  }
+}
+
+const CONFLICT_KEY = 'cd3.project.conflict.v1';
+
+/**
+ * Keeps the copy that lost a conflict, so adopting an external change never silently destroys the
+ * only record of the user's burst of edits. Recover it via Open project… after exporting it from
+ * the browser console, or simply redo the edits — it is a safety net, not a merge.
+ */
+export function stashConflictProject(project: ReadonlyProject): void {
+  try {
+    localStorage.setItem(CONFLICT_KEY, JSON.stringify(project));
+  } catch {
+    // Losing the stash is acceptable; losing the ability to adopt is not.
   }
 }
 

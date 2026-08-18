@@ -56,9 +56,31 @@ describe('project persistence', () => {
   it('reports disk once the service accepts the snapshot', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(null, { status: 200 })),
+      vi.fn(async () => new Response(null, { status: 200, headers: { etag: 'rev-1' } })),
     );
 
     await expect(saveProject(project)).resolves.toBe('disk');
+  });
+
+  it('states its base revision on save and yields on a conflict instead of clobbering', async () => {
+    const calls: RequestInit[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') {
+          calls.push(init);
+          return calls.length === 1
+            ? new Response(null, { status: 200, headers: { etag: 'rev-a' } })
+            : new Response(JSON.stringify({ revision: 'rev-b' }), { status: 409 });
+        }
+        return new Response(JSON.stringify(project), { status: 200, headers: { etag: 'rev-a' } });
+      }),
+    );
+
+    await expect(saveProject(project)).resolves.toBe('disk');
+    await expect(saveProject(project)).resolves.toBe('conflict');
+
+    const secondHeaders = calls[1]?.headers as Record<string, string>;
+    expect(secondHeaders['if-match']).toBe('rev-a');
   });
 });
