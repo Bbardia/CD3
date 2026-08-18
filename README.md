@@ -90,6 +90,18 @@ pnpm dev
 Alternatively, clone over SSH with `git clone git@github.com:Bbardia/CD3.git`. The application stays
 local to the Mac and the development services continue to bind to loopback only.
 
+## Run as an application
+
+```sh
+pnpm build && pnpm start   # one process serving the app at http://127.0.0.1:3100
+pnpm dist:mac              # or package the double-clickable Mac app
+```
+
+`pnpm dist:mac` writes `apps/desktop/release/CD3-<version>-arm64.dmg` — the same Fastify server
+wrapped in an Electron window, with snapshots stored under `~/Library/Application Support/CD3`. The
+build is unsigned: open it the first time with right-click → Open. Pushing a `v*` tag builds the DMG
+in CI and attaches it to the tag's GitHub release.
+
 ## Verify
 
 ```sh

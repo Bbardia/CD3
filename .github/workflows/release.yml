@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Stamp the app version from the tag
+        run: npm pkg set version="${GITHUB_REF_NAME#v}" --prefix apps/desktop
+      - run: pnpm build
+      - run: pnpm --filter @cd3/desktop dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CD3-macOS-dmg
+          path: apps/desktop/release/*.dmg
+          if-no-files-found: error
+      - name: Attach the DMG to the release for this tag
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/desktop/release/*.dmg
+          generate_release_notes: true
