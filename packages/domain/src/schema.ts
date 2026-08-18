@@ -518,6 +518,7 @@ export type ViewItem = z.output<typeof ViewItemSchema>;
 export type ViewItemInput = z.input<typeof ViewItemSchema>;
 export type ViewType = View['type'];
 export type Placement2D = z.output<typeof Placement2DSchema>;
+export type Placement2DInput = z.input<typeof Placement2DSchema>;
 export type ThreeDPolicy = z.output<typeof ThreeDPolicySchema>;
 export type Vector3 = z.output<typeof Vector3Schema>;
 export type CameraBookmark = z.output<typeof CameraBookmarkSchema>;

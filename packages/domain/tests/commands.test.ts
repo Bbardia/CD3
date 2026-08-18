@@ -326,6 +326,78 @@ describe('element commands', () => {
   });
 });
 
+describe('authoring an element straight into a view', () => {
+  const placed: DomainCommand = {
+    type: 'create-element',
+    element: element({ id: 'search', kind: 'container', parentId: 'commerce', name: 'Search' }),
+    placeInView: {
+      viewId: 'containers',
+      itemId: 'containers-search',
+      placement: { x: 400, y: 220, width: 240, height: 110 },
+    },
+  };
+
+  it('adds the element, its view item and its placement in one command', () => {
+    const result = applyCommand(createProject(), placed);
+
+    expect(result.project.elements['search']).toMatchObject({ name: 'Search' });
+    expect(result.project.views['containers']?.items['containers-search']).toEqual({
+      id: 'containers-search',
+      elementId: 'search',
+    });
+    expect(result.project.views['containers']?.placements['containers-search']).toEqual({
+      x: 400,
+      y: 220,
+      width: 240,
+      height: 110,
+    });
+    expectValid(result.project);
+  });
+
+  it('undoes the element and the view item together', () => {
+    const history = applyCommandToHistory(createCommandHistory(createProject()), placed);
+    const undone = undoCommand(history).project;
+
+    expect(Object.hasOwn(undone.elements, 'search')).toBe(false);
+    expect(Object.hasOwn(undone.views['containers']?.items ?? {}, 'containers-search')).toBe(false);
+    expect(Object.hasOwn(undone.views['containers']?.placements ?? {}, 'containers-search')).toBe(
+      false,
+    );
+  });
+
+  it('rejects a view item id that is already taken, leaving the element uncreated', () => {
+    expectCommandError(
+      createProject(),
+      {
+        ...placed,
+        placeInView: {
+          viewId: 'containers',
+          itemId: 'containers-api',
+          placement: { x: 0, y: 0, width: 240, height: 110 },
+        },
+      },
+      'DUPLICATE_VIEW_ITEM',
+      'already exists in view "containers"',
+    );
+  });
+
+  it('shows a new relationship in the requested view', () => {
+    const result = applyCommand(createProject(), {
+      type: 'create-relationship',
+      relationship: relationship({
+        id: 'api-calls-analytics',
+        sourceId: 'api',
+        targetId: 'analytics',
+        name: 'Reports to',
+      }),
+      showInViewId: 'containers',
+    });
+
+    expect(result.project.views['containers']?.relationshipIds).toEqual(['api-calls-analytics']);
+    expectValid(result.project);
+  });
+});
+
 describe('reparent-element', () => {
   it('reparents through a separate validated command', () => {
     const project = createProject();
@@ -430,6 +502,71 @@ describe('relationship commands', () => {
       'RELATIONSHIP_ENDPOINT_NOT_FOUND',
       'Target element "missing" does not exist.',
     );
+  });
+});
+
+describe('relationship editing', () => {
+  it('renames a relationship and switches its interaction', () => {
+    const result = applyCommand(createProject(), {
+      type: 'update-relationship',
+      relationshipId: 'shopper-uses-commerce',
+      changes: { name: 'Browses catalogue', interaction: 'asynchronous' },
+    });
+
+    expect(result.project.relationships['shopper-uses-commerce']).toMatchObject({
+      name: 'Browses catalogue',
+      interaction: 'asynchronous',
+      sourceId: 'shopper',
+      targetId: 'commerce',
+    });
+    expectValid(result.project);
+  });
+
+  it('refuses to move an endpoint through an update', () => {
+    expectCommandError(
+      createProject(),
+      {
+        type: 'update-relationship',
+        relationshipId: 'shopper-uses-commerce',
+        changes: { targetId: 'analytics' } as never,
+      },
+      'PROTECTED_RELATIONSHIP_FIELD',
+      'cannot change protected field "targetId"',
+    );
+  });
+
+  it('deletes a relationship and drops it from every view that listed it', () => {
+    const result = applyCommand(createProject(), {
+      type: 'delete-relationship',
+      relationshipId: 'shopper-uses-commerce',
+    });
+
+    expect(Object.hasOwn(result.project.relationships, 'shopper-uses-commerce')).toBe(false);
+    expect(result.project.views['context']?.relationshipIds).toEqual(['adapter-calls-pricing']);
+    expectValid(result.project);
+  });
+
+  it('reports an unknown relationship instead of silently doing nothing', () => {
+    expectCommandError(
+      createProject(),
+      { type: 'delete-relationship', relationshipId: 'missing' },
+      'RELATIONSHIP_NOT_FOUND',
+      'Relationship "missing" does not exist.',
+    );
+  });
+
+  it('restores a deleted relationship and its view membership on undo', () => {
+    const history = applyCommandToHistory(createCommandHistory(createProject()), {
+      type: 'delete-relationship',
+      relationshipId: 'shopper-uses-commerce',
+    });
+    const undone = undoCommand(history).project;
+
+    expect(undone.relationships['shopper-uses-commerce']).toBeDefined();
+    expect(undone.views['context']?.relationshipIds).toEqual([
+      'shopper-uses-commerce',
+      'adapter-calls-pricing',
+    ]);
   });
 });
 

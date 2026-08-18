@@ -3,11 +3,14 @@ import type { ZodError } from 'zod';
 
 import {
   ElementSchema,
+  Placement2DSchema,
   ProjectSchema,
   RelationshipSchema,
+  ViewItemSchema,
   ViewSchema,
   type Element,
   type ElementInput,
+  type Placement2DInput,
   type Project,
   type RelationshipInput,
   type ViewInput,
@@ -17,6 +20,7 @@ export type DomainCommandErrorCode =
   | 'CASCADE_REQUIRED'
   | 'DUPLICATE_ELEMENT_ID'
   | 'DUPLICATE_RELATIONSHIP_ID'
+  | 'DUPLICATE_VIEW_ITEM'
   | 'DUPLICATE_VIEW_ITEM_MOVE'
   | 'ELEMENT_CANNOT_BE_REPARENTED'
   | 'ELEMENT_NOT_FOUND'
@@ -26,7 +30,9 @@ export type DomainCommandErrorCode =
   | 'PARENT_ELEMENT_NOT_FOUND'
   | 'PROTECTED_ELEMENT_FIELD'
   | 'PROTECTED_VIEW_FIELD'
+  | 'PROTECTED_RELATIONSHIP_FIELD'
   | 'RELATIONSHIP_ENDPOINT_NOT_FOUND'
+  | 'RELATIONSHIP_NOT_FOUND'
   | 'REPARENT_CYCLE'
   | 'VIEW_ITEM_NOT_FOUND'
   | 'VIEW_NOT_FOUND'
@@ -63,13 +69,32 @@ export type ElementChanges = DeepReadonly<
   >
 >;
 
+export type RelationshipChanges = DeepReadonly<
+  Partial<
+    Pick<
+      RelationshipInput,
+      'description' | 'externalRefs' | 'interaction' | 'name' | 'properties' | 'tags' | 'technology'
+    >
+  >
+>;
+
 export type ViewChanges = DeepReadonly<
   Partial<Pick<ViewInput, 'description' | 'name' | 'relationshipIds' | 'scopeElementId' | 'type'>>
 >;
 
+/** Places a newly created element in a view as part of the same command. */
+export interface ViewPlacement {
+  readonly viewId: string;
+  readonly itemId: string;
+  readonly placement: DeepReadonly<Placement2DInput>;
+  readonly label?: string;
+}
+
 export interface CreateElementCommand {
   readonly type: 'create-element';
   readonly element: DeepReadonly<ElementInput>;
+  /** Authoring an element and showing it are one intent, so one command, and one undo. */
+  readonly placeInView?: ViewPlacement;
 }
 
 export interface UpdateElementCommand {
@@ -93,6 +118,19 @@ export interface ReparentElementCommand {
 export interface CreateRelationshipCommand {
   readonly type: 'create-relationship';
   readonly relationship: DeepReadonly<RelationshipInput>;
+  /** View that should show the new relationship, added in the same command. */
+  readonly showInViewId?: string;
+}
+
+export interface UpdateRelationshipCommand {
+  readonly type: 'update-relationship';
+  readonly relationshipId: string;
+  readonly changes: RelationshipChanges;
+}
+
+export interface DeleteRelationshipCommand {
+  readonly type: 'delete-relationship';
+  readonly relationshipId: string;
 }
 
 export interface ViewItemMove {
@@ -119,6 +157,8 @@ export type DomainCommand =
   | DeleteElementCommand
   | ReparentElementCommand
   | CreateRelationshipCommand
+  | UpdateRelationshipCommand
+  | DeleteRelationshipCommand
   | MoveViewItemsCommand
   | UpdateViewCommand;
 
@@ -152,6 +192,16 @@ const elementChangeFields = new Set([
   'tags',
   'technology',
 ]);
+const relationshipChangeFields = new Set([
+  'description',
+  'externalRefs',
+  'interaction',
+  'name',
+  'properties',
+  'tags',
+  'technology',
+]);
+
 const viewChangeFields = new Set([
   'description',
   'name',
@@ -307,6 +357,22 @@ function parseRelationship(input: unknown) {
   return result.data;
 }
 
+function parseViewItem(input: unknown) {
+  const result = ViewItemSchema.safeParse(input);
+  if (!result.success) {
+    throw invalidProject(`View item is invalid: ${validationMessage(result.error)}`, result.error);
+  }
+  return result.data;
+}
+
+function parsePlacement(input: unknown) {
+  const result = Placement2DSchema.safeParse(input);
+  if (!result.success) {
+    throw invalidProject(`Placement is invalid: ${validationMessage(result.error)}`, result.error);
+  }
+  return result.data;
+}
+
 function parseView(input: unknown) {
   const result = ViewSchema.safeParse(input);
   if (!result.success) {
@@ -334,8 +400,8 @@ function getView(project: Project, viewId: string) {
 function assertOnlyFields(
   changes: object,
   allowedFields: ReadonlySet<string>,
-  errorCode: 'PROTECTED_ELEMENT_FIELD' | 'PROTECTED_VIEW_FIELD',
-  subject: 'update-element' | 'update-view',
+  errorCode: 'PROTECTED_ELEMENT_FIELD' | 'PROTECTED_RELATIONSHIP_FIELD' | 'PROTECTED_VIEW_FIELD',
+  subject: 'update-element' | 'update-relationship' | 'update-view',
 ): void {
   for (const field of Object.keys(changes)) {
     if (!allowedFields.has(field)) {
@@ -353,9 +419,38 @@ function prepareCreateElement(project: Project, command: CreateElementCommand): 
     throw new DomainCommandError('DUPLICATE_ELEMENT_ID', `Element "${element.id}" already exists.`);
   }
 
+  const target = command.placeInView;
+  if (target === undefined) {
+    return {
+      mutate(draft) {
+        draft.elements[element.id] = element;
+      },
+    };
+  }
+
+  const view = getView(project, target.viewId);
+  if (hasOwn(view.items, target.itemId)) {
+    throw new DomainCommandError(
+      'DUPLICATE_VIEW_ITEM',
+      `View item "${target.itemId}" already exists in view "${target.viewId}".`,
+    );
+  }
+  const item = parseViewItem({
+    id: target.itemId,
+    elementId: element.id,
+    ...(target.label === undefined ? {} : { label: target.label }),
+  });
+  const placement = parsePlacement(target.placement);
+
   return {
     mutate(draft) {
       draft.elements[element.id] = element;
+      const draftView = draft.views[target.viewId];
+      if (draftView === undefined) {
+        return;
+      }
+      draftView.items[item.id] = item;
+      draftView.placements[item.id] = placement;
     },
   };
 }
@@ -559,9 +654,86 @@ function prepareCreateRelationship(
     );
   }
 
+  const viewId = command.showInViewId;
+  const view = viewId === undefined ? undefined : getView(project, viewId);
+
   return {
     mutate(draft) {
       draft.relationships[relationship.id] = relationship;
+      if (viewId === undefined || view === undefined) {
+        return;
+      }
+      const draftView = draft.views[viewId];
+      if (draftView !== undefined && !view.relationshipIds.includes(relationship.id)) {
+        draftView.relationshipIds = [...view.relationshipIds, relationship.id];
+      }
+    },
+  };
+}
+
+function getRelationship(project: Project, relationshipId: string) {
+  const relationship = hasOwn(project.relationships, relationshipId)
+    ? project.relationships[relationshipId]
+    : undefined;
+  if (relationship === undefined) {
+    throw new DomainCommandError(
+      'RELATIONSHIP_NOT_FOUND',
+      `Relationship "${relationshipId}" does not exist.`,
+    );
+  }
+  return relationship;
+}
+
+function prepareUpdateRelationship(
+  project: Project,
+  command: UpdateRelationshipCommand,
+): PreparedCommand {
+  const relationship = getRelationship(project, command.relationshipId);
+  assertOnlyFields(
+    command.changes,
+    relationshipChangeFields,
+    'PROTECTED_RELATIONSHIP_FIELD',
+    'update-relationship',
+  );
+  const updated = parseRelationship({ ...relationship, ...command.changes });
+
+  if (structurallyEqual(relationship, updated)) {
+    return { mutate() {} };
+  }
+
+  return {
+    mutate(draft) {
+      draft.relationships[command.relationshipId] = updated;
+    },
+  };
+}
+
+function prepareDeleteRelationship(
+  project: Project,
+  command: DeleteRelationshipCommand,
+): PreparedCommand {
+  getRelationship(project, command.relationshipId);
+  // Views list relationships by ID, so a deleted relationship has to leave those lists with it.
+  const affectedViewIds = Object.keys(project.views)
+    .filter((viewId) =>
+      project.views[viewId]?.relationshipIds.some(
+        (relationshipId) => relationshipId === command.relationshipId,
+      ),
+    )
+    .sort(compareCodeUnits);
+
+  return {
+    mutate(draft) {
+      delete draft.relationships[command.relationshipId];
+      for (const viewId of affectedViewIds) {
+        const sourceView = project.views[viewId];
+        const draftView = draft.views[viewId];
+        if (sourceView !== undefined && draftView !== undefined) {
+          draftView.relationshipIds = sourceView.relationshipIds.filter(
+            (relationshipId) => relationshipId !== command.relationshipId,
+          );
+        }
+      }
     },
   };
 }
@@ -642,6 +814,10 @@ function prepareCommand(project: Project, command: DomainCommand): PreparedComma
       return prepareReparentElement(project, command);
     case 'create-relationship':
       return prepareCreateRelationship(project, command);
+    case 'update-relationship':
+      return prepareUpdateRelationship(project, command);
+    case 'delete-relationship':
+      return prepareDeleteRelationship(project, command);
     case 'move-view-items':
       return prepareMoveViewItems(project, command);
     case 'update-view':
