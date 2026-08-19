@@ -4,14 +4,18 @@ import type { ViewNode3D } from '@cd3/layout';
 export type SpatialModelKey =
   | 'analytics'
   | 'browser'
+  | 'cache'
   | 'cloud'
   | 'component'
   | 'database'
+  | 'docs'
+  | 'firewall'
   | 'gateway'
   | 'lock'
   | 'mobile'
   | 'person'
   | 'queue'
+  | 'scheduler'
   | 'server'
   | 'storage'
   | 'system'
@@ -20,14 +24,18 @@ export type SpatialModelKey =
 export const spatialModelKeys: readonly SpatialModelKey[] = [
   'analytics',
   'browser',
+  'cache',
   'cloud',
   'component',
   'database',
+  'docs',
+  'firewall',
   'gateway',
   'lock',
   'mobile',
   'person',
   'queue',
+  'scheduler',
   'server',
   'storage',
   'system',
@@ -37,14 +45,18 @@ export const spatialModelKeys: readonly SpatialModelKey[] = [
 export const ICON_LABELS: Readonly<Record<SpatialModelKey, string>> = {
   analytics: 'Analytics',
   browser: 'Web app',
+  cache: 'Cache',
   cloud: 'Cloud',
   component: 'Component',
   database: 'Database',
+  docs: 'Documentation',
+  firewall: 'Firewall',
   gateway: 'API gateway',
   lock: 'Auth',
   mobile: 'Mobile app',
   person: 'Person',
   queue: 'Event stream',
+  scheduler: 'Scheduler',
   server: 'Service',
   storage: 'Object storage',
   system: 'System',
@@ -62,6 +74,10 @@ export type ModelNode = Pick<ViewNode3D, 'kind' | 'tags'> & {
 
 const KEYWORD_MODELS: readonly (readonly [RegExp, SpatialModelKey])[] = [
   [/analytics|metrics|telemetry|reporting|dashboard/, 'analytics'],
+  [/cache|redis|memcache|cdn/, 'cache'],
+  [/firewall|waf|vpn|proxy server/, 'firewall'],
+  [/scheduler|cron|timer/, 'scheduler'],
+  [/docs|documentation|wiki|manual/, 'docs'],
   [/auth|identity|iam|sso|oauth|security|secrets/, 'lock'],
   [/mobile|ios|android/, 'mobile'],
   [/bucket|blob|object storage|s3\b|storage/, 'storage'],

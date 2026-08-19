@@ -30,15 +30,19 @@ type ModelPart =
 /** Each prop carries its own palette: technology reads from the object, C4 kind from the tile. */
 const PALETTES: Readonly<Record<SpatialModelKey, Readonly<Record<Tone, string>>>> = {
   analytics: { body: '#1f9db0', accent: '#54c4d4', light: '#c8eef4', dark: '#116575' },
+  cache: { body: '#c4462e', accent: '#e8734f', light: '#f8d9c9', dark: '#8a2c1b' },
   browser: { body: '#54687d', accent: '#3f8fd8', light: '#f3f7fb', dark: '#2c4a63' },
   cloud: { body: '#cfe0f2', accent: '#a3c4ea', light: '#eef5fc', dark: '#7d9dc0' },
   component: { body: '#4c3a8f', accent: '#6a4fd0', light: '#c9bcf2', dark: '#2f2263' },
   database: { body: '#4f7fd4', accent: '#7ba5ea', light: '#c9dcf8', dark: '#2e4d8c' },
+  docs: { body: '#7b8794', accent: '#a3b0bc', light: '#f4f7f9', dark: '#4f5b66' },
+  firewall: { body: '#a8402f', accent: '#cf6a4f', light: '#f3d6cb', dark: '#722417' },
   gateway: { body: '#6f5bd0', accent: '#9c8ce7', light: '#ded7f8', dark: '#403289' },
   lock: { body: '#b5484a', accent: '#d9776f', light: '#f4d5d0', dark: '#7d2a2e' },
   mobile: { body: '#3d4c59', accent: '#5fa8e8', light: '#eef4f9', dark: '#26313b' },
   person: { body: '#b4531a', accent: '#e08a3c', light: '#f7dab6', dark: '#7d3708' },
   queue: { body: '#d9a13a', accent: '#efc271', light: '#f7e3b8', dark: '#8c6215' },
+  scheduler: { body: '#3f6f8f', accent: '#69a2c4', light: '#d7e9f3', dark: '#26485f' },
   server: { body: '#54748f', accent: '#3fae86', light: '#e4edf4', dark: '#325069' },
   storage: { body: '#9a6b42', accent: '#c08e5d', light: '#ecd9c2', dark: '#6b452a' },
   system: { body: '#5c7794', accent: '#8ba5bf', light: '#dce6ef', dark: '#385470' },
@@ -80,6 +84,13 @@ const MODELS: Readonly<Record<SpatialModelKey, readonly ModelPart[]>> = {
     box('body', [0.13, 0.34, 0.13], [0, 0.24, 0]),
     box('dark', [0.13, 0.48, 0.13], [0.18, 0.31, 0]),
   ],
+  // A heatsink block: cooling fins over a hot core.
+  cache: [
+    box('body', [0.52, 0.24, 0.4], [0, 0.14, 0]),
+    box('accent', [0.07, 0.24, 0.36], [-0.16, 0.38, 0]),
+    box('accent', [0.07, 0.24, 0.36], [0, 0.38, 0]),
+    box('accent', [0.07, 0.24, 0.36], [0.16, 0.38, 0]),
+  ],
   // A browser window on a stand: light pane, coloured title bar, dark neck.
   browser: [
     box('light', [0.78, 0.5, 0.07], [0, 0.44, 0.01], [-0.12, 0, 0]),
@@ -118,6 +129,24 @@ const MODELS: Readonly<Record<SpatialModelKey, readonly ModelPart[]>> = {
     box('light', [0.23, 0.4, 0.02], [0, 0.31, 0.035]),
     mesh('accent', <sphereGeometry args={[0.02, 8, 6]} />, [0, 0.09, 0.045]),
   ],
+  // A stack of pages, top one proud.
+  docs: [
+    box('light', [0.44, 0.05, 0.56], [0, 0.05, 0]),
+    box('light', [0.44, 0.05, 0.56], [0.04, 0.11, -0.02]),
+    box('accent', [0.44, 0.05, 0.56], [0.08, 0.17, -0.04]),
+    box('dark', [0.3, 0.02, 0.05], [0.08, 0.21, -0.22]),
+  ],
+  // A brick wall, offset courses.
+  firewall: [
+    box('body', [0.2, 0.14, 0.16], [-0.22, 0.08, 0]),
+    box('accent', [0.2, 0.14, 0.16], [0, 0.08, 0]),
+    box('body', [0.2, 0.14, 0.16], [0.22, 0.08, 0]),
+    box('accent', [0.2, 0.14, 0.16], [-0.11, 0.24, 0]),
+    box('body', [0.2, 0.14, 0.16], [0.11, 0.24, 0]),
+    box('body', [0.2, 0.14, 0.16], [-0.22, 0.4, 0]),
+    box('accent', [0.2, 0.14, 0.16], [0, 0.4, 0]),
+    box('body', [0.2, 0.14, 0.16], [0.22, 0.4, 0]),
+  ],
   // A rack-mount router: body, lit port strip, two aerials.
   gateway: [
     box('body', [0.72, 0.22, 0.46], [0, 0.14, 0]),
@@ -138,6 +167,19 @@ const MODELS: Readonly<Record<SpatialModelKey, readonly ModelPart[]>> = {
     mesh('dark', <torusGeometry args={[0.18, 0.035, 8, 16]} />, [-0.29, 0.28, 0], [0, QUARTER, 0]),
     mesh('dark', <torusGeometry args={[0.18, 0.035, 8, 16]} />, [0.29, 0.28, 0], [0, QUARTER, 0]),
     box('accent', [0.16, 0.16, 0.16], [0.05, 0.55, 0], [0, QUARTER / 2, 0]),
+  ],
+  // A standing clock: face, two hands, a foot.
+  scheduler: [
+    box('body', [0.34, 0.08, 0.24], [0, 0.05, 0]),
+    mesh(
+      'light',
+      <cylinderGeometry args={[0.24, 0.24, 0.08, 20]} />,
+      [0, 0.38, 0],
+      [QUARTER, 0, 0],
+    ),
+    mesh('dark', <torusGeometry args={[0.24, 0.03, 8, 20]} />, [0, 0.38, 0]),
+    box('dark', [0.03, 0.15, 0.02], [0, 0.44, 0.05]),
+    box('dark', [0.11, 0.03, 0.02], [0.05, 0.38, 0.05]),
   ],
   server: [
     box('body', [0.5, 0.56, 0.44], [0, 0.29, 0]),
