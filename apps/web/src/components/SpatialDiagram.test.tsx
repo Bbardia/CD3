@@ -92,6 +92,9 @@ describe('SpatialDiagram fallback', () => {
         connecting={false}
         revealSignal={0}
         onRequestAddAt={() => undefined}
+        onDrillDown={() => undefined}
+        showGrid
+        annotations={{}}
         pendingSourceElementId={undefined}
       />,
     );
@@ -119,6 +122,9 @@ describe('SpatialDiagram fallback', () => {
         connecting={false}
         revealSignal={0}
         onRequestAddAt={() => undefined}
+        onDrillDown={() => undefined}
+        showGrid
+        annotations={{}}
         pendingSourceElementId={undefined}
       />,
     );
@@ -133,6 +139,9 @@ describe('SpatialDiagram fallback', () => {
         connecting={false}
         revealSignal={0}
         onRequestAddAt={() => undefined}
+        onDrillDown={() => undefined}
+        showGrid
+        annotations={{}}
         pendingSourceElementId={undefined}
       />,
     );

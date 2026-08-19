@@ -1895,3 +1895,132 @@ details[open] > .tree-group__heading .tree-group__caret {
 .edge-editor .danger-button {
   margin-top: 0;
 }
+
+/* Annotations -------------------------------------------------------------- */
+
+.annotation {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.annotation--boundary {
+  border: 1.5px dashed #7f95a8;
+  background: rgba(139, 165, 191, 0.08);
+}
+
+.annotation--note {
+  border: 1px solid #e3d9b8;
+  background: #fbf6e4;
+  box-shadow: 0 2px 6px rgba(34, 50, 44, 0.08);
+}
+
+.annotation.is-selected {
+  border-color: var(--primary);
+}
+
+.annotation__label {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  width: calc(100% - 32px);
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-small);
+  font-weight: 650;
+}
+
+.annotation--note .annotation__label {
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 500;
+}
+
+.annotation__label:hover,
+.annotation__label:focus-visible {
+  border-color: var(--divider);
+  background: rgba(255, 255, 255, 0.85);
+  outline: none;
+}
+
+.annotation__delete {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--quiet);
+  cursor: pointer;
+  font-size: var(--t-body);
+  opacity: 0;
+}
+
+.annotation:hover .annotation__delete,
+.annotation__delete:focus-visible {
+  opacity: 1;
+}
+
+.annotation__delete:hover {
+  color: #c2503f;
+}
+
+.palette-glyph--region {
+  border: 1.5px dashed #7f95a8;
+  background: transparent;
+}
+
+.palette-glyph--note {
+  border: 1px solid #d8c98a;
+  background: #fbf6e4;
+}
+
+.stage-add-menu__divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--divider);
+}
+
+.spatial-note {
+  max-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid #e3d9b8;
+  border-radius: 5px;
+  background: #fbf6e4;
+  color: var(--ink);
+  font-size: 10px;
+  box-shadow: 0 2px 6px rgba(34, 50, 44, 0.12);
+}
+
+.spatial-region-label {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(252, 253, 252, 0.85);
+  color: #4c6172;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.palette-glyph--cache {
+  background: #c4462e;
+}
+.palette-glyph--scheduler {
+  background: #3f6f8f;
+}
+.palette-glyph--firewall {
+  background: #a8402f;
+}
+.palette-glyph--docs {
+  background: #7b8794;
+}

@@ -12,7 +12,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { Html, Line, OrbitControls, RoundedBox } from '@react-three/drei';
 import { OrthographicCamera } from 'three';
 import type { Mesh } from 'three';
-import type { ViewItemMove } from '@cd3/domain';
+import type { ViewAnnotation, ViewItemMove } from '@cd3/domain';
 import type { ProjectedView3D, ViewNode3D } from '@cd3/layout';
 
 import { PALETTE_MIME } from '../editor/palette';
@@ -40,6 +40,12 @@ export interface SpatialDiagramProps {
   }) => void;
   /** Bumped when the caller adds something off-screen and wants the camera to show it. */
   readonly revealSignal: number;
+  /** Double-click on a block: drill into the view scoped to that element, when one exists. */
+  readonly onDrillDown: (elementId: string) => void;
+  /** False while an image export captures the canvas: the grid is chrome, not content. */
+  readonly showGrid: boolean;
+  /** Presentation decorations for this view, projected flat onto the ground plane. */
+  readonly annotations: Readonly<Record<string, ViewAnnotation>>;
 }
 
 /** Ground-plane offset applied to a block while a drag is in flight, in world units. */
@@ -234,7 +240,22 @@ function FlowPulses({ lines }: { readonly lines: readonly FlowLine[] }) {
   const { invalidate } = useThree();
   const pulses = useRef<(Mesh | null)[]>([]);
 
+  // A hidden tab must not spin the GPU: the frame loop stops with the last invalidate and one
+  // fresh invalidate restarts it when the tab returns.
+  useEffect(() => {
+    const restart = () => {
+      if (!document.hidden) {
+        invalidate();
+      }
+    };
+    document.addEventListener('visibilitychange', restart);
+    return () => document.removeEventListener('visibilitychange', restart);
+  }, [invalidate]);
+
   useFrame((state) => {
+    if (document.hidden) {
+      return;
+    }
     const elapsed = state.clock.elapsedTime;
     lines.forEach((line, index) => {
       const pulse = pulses.current[index];
@@ -431,6 +452,7 @@ function ArchitectureBlock({
   offset,
   draggable,
   onSelect,
+  onDrillDown,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -440,6 +462,7 @@ function ArchitectureBlock({
   readonly offset: GroundOffset;
   readonly draggable: boolean;
   readonly onSelect: (elementId: string) => void;
+  readonly onDrillDown: (elementId: string) => void;
   readonly onDragStart: (node: ViewNode3D, point: GroundOffset) => void;
   readonly onDragMove: (point: GroundOffset) => void;
   readonly onDragEnd: () => void;
@@ -460,6 +483,7 @@ function ArchitectureBlock({
       }}
       onDoubleClick={(event) => {
         event.stopPropagation();
+        onDrillDown(node.elementId);
       }}
       onPointerDown={(event) => {
         const point = pointerOn(event);
@@ -545,6 +569,9 @@ function SpatialScene({
   revealSignal,
   onRequestAddAt,
   pendingSourceElementId,
+  onDrillDown,
+  showGrid,
+  annotations,
 }: SpatialDiagramProps) {
   // Transient renderer state, exactly like the 2D drag preview: pointer movement writes here and
   // nowhere else, so no domain command, validation, or projection runs until the gesture ends.
@@ -678,10 +705,64 @@ function SpatialScene({
   return (
     <>
       <color attach="background" args={['#f5f7f5']} />
-      <gridHelper
-        args={[groundSize, groundSize, '#c8d3cd', '#dde4e0']}
-        position={[center[0], -0.01, center[2]]}
-      />
+      {Object.values(annotations).map((annotation) => {
+        const scale = projection.policy.coordinateScale;
+        const w = annotation.width * scale;
+        const d = annotation.height * scale;
+        const cx = (annotation.x + annotation.width / 2) * scale;
+        const cz = (annotation.y + annotation.height / 2) * scale;
+        if (annotation.kind === 'note') {
+          return (
+            <Html
+              key={annotation.id}
+              position={[cx, 0.02, cz]}
+              center
+              className="spatial-label-anchor"
+              style={{ pointerEvents: 'none' }}
+            >
+              <div className="spatial-note">{annotation.label ?? 'Note'}</div>
+            </Html>
+          );
+        }
+        const color = annotation.color ?? '#8ba5bf';
+        return (
+          <group key={annotation.id}>
+            <mesh position={[cx, -0.03, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[w, d]} />
+              <meshBasicMaterial color={color} transparent opacity={0.14} depthWrite={false} />
+            </mesh>
+            <Line
+              points={[
+                [cx - w / 2, 0.01, cz - d / 2],
+                [cx + w / 2, 0.01, cz - d / 2],
+                [cx + w / 2, 0.01, cz + d / 2],
+                [cx - w / 2, 0.01, cz + d / 2],
+                [cx - w / 2, 0.01, cz - d / 2],
+              ]}
+              color={color}
+              lineWidth={1.4}
+              dashed
+              dashSize={0.3}
+              gapSize={0.18}
+            />
+            {annotation.label === undefined ? null : (
+              <Html
+                position={[cx - w / 2 + 0.3, 0.02, cz - d / 2 + 0.3]}
+                className="spatial-label-anchor"
+                style={{ pointerEvents: 'none' }}
+              >
+                <div className="spatial-region-label">{annotation.label}</div>
+              </Html>
+            )}
+          </group>
+        );
+      })}
+      {showGrid ? (
+        <gridHelper
+          args={[groundSize, groundSize, '#c8d3cd', '#dde4e0']}
+          position={[center[0], -0.01, center[2]]}
+        />
+      ) : null}
       <hemisphereLight args={['#ffffff', '#dce3df', 1.65]} />
       <directionalLight position={[-18, 28, 20]} intensity={2.1} />
       <directionalLight position={[18, 12, -16]} intensity={0.55} />
@@ -765,6 +846,7 @@ function SpatialScene({
             offset={offsetFor(node.viewItemId)}
             draggable={!connecting}
             onSelect={onSelect}
+            onDrillDown={onDrillDown}
             onDragStart={handleDragStart}
             onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}

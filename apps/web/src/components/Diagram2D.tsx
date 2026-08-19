@@ -12,11 +12,12 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { ViewItemMove } from '@cd3/domain';
+import type { ViewAnnotation, ViewItemMove } from '@cd3/domain';
 import type { ProjectedView2D } from '@cd3/layout';
 
 import { PALETTE_MIME } from '../editor/palette';
 import { modelKeyFor } from './spatial-icon';
+import { AnnotationNode, type AnnotationFlowNode } from './AnnotationNode';
 import { movesCollide } from '../editor/placement';
 import { DatumNode, type DatumFlowNode } from './DatumNode';
 
@@ -30,6 +31,8 @@ export interface Diagram2DProps {
   readonly onMoveItems: (moves: readonly ViewItemMove[]) => void;
   /** Palette drop, reported in placement space so the caller stays renderer-neutral. */
   readonly onDropPaletteEntry: (entryId: string, placement: { x: number; y: number }) => void;
+  /** Double-click on a node: drill into the view scoped to that element, when one exists. */
+  readonly onDrillDown: (elementId: string) => void;
   /** Click on a relationship line or its label: open that connection's editor at the pointer. */
   readonly onEditRelationship: (request: {
     relationshipId: string;
@@ -47,9 +50,16 @@ export interface Diagram2DProps {
   readonly connecting: boolean;
   /** Bumped when the caller adds something off-screen and wants the canvas to show it. */
   readonly revealSignal: number;
+  /** False while an image export captures the canvas: the grid is chrome, not content. */
+  readonly showGrid: boolean;
+  /** Presentation decorations for this view: boundary boxes and notes, never semantics. */
+  readonly annotations: Readonly<Record<string, ViewAnnotation>>;
+  readonly onUpdateAnnotations: (annotations: Readonly<Record<string, ViewAnnotation>>) => void;
 }
 
-const nodeTypes = { datum: DatumNode } satisfies NodeTypes;
+const nodeTypes = { datum: DatumNode, annotation: AnnotationNode } satisfies NodeTypes;
+
+type CanvasNode = AnnotationFlowNode | DatumFlowNode;
 
 function compareItemIds(left: ViewItemMove, right: ViewItemMove): number {
   return left.itemId < right.itemId ? -1 : left.itemId > right.itemId ? 1 : 0;
@@ -67,8 +77,12 @@ export function Diagram2D({
   revealSignal,
   onRequestAddAt,
   onEditRelationship,
+  onDrillDown,
+  showGrid,
+  annotations,
+  onUpdateAnnotations,
 }: Diagram2DProps) {
-  const [flow, setFlow] = useState<ReactFlowInstance<DatumFlowNode, Edge> | null>(null);
+  const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode, Edge> | null>(null);
   const elementIdByItemId = useMemo(
     () =>
       new Map<string, string>(projection.nodes.map((node) => [node.viewItemId, node.elementId])),
@@ -113,15 +127,56 @@ export function Diagram2D({
     [connecting, projection.nodes, selectedElements],
   );
 
+  const annotationNodes = useMemo<AnnotationFlowNode[]>(
+    () =>
+      Object.values(annotations).map((annotation) => ({
+        id: `annotation:${annotation.id}`,
+        type: 'annotation',
+        position: { x: annotation.x, y: annotation.y },
+        width: annotation.width,
+        height: annotation.height,
+        draggable: !connecting,
+        connectable: false,
+        selectable: true,
+        // Boundaries sit behind the elements they group; notes float with them.
+        zIndex: annotation.kind === 'boundary' ? -1 : 0,
+        style: { width: annotation.width, height: annotation.height },
+        data: {
+          annotation,
+          onRename: (annotationId: string, label: string) => {
+            const current = annotations[annotationId];
+            if (current !== undefined) {
+              onUpdateAnnotations({
+                ...annotations,
+                [annotationId]:
+                  label === '' ? { ...current, label: undefined } : { ...current, label },
+              } as Readonly<Record<string, ViewAnnotation>>);
+            }
+          },
+          onDelete: (annotationId: string) => {
+            const { [annotationId]: _removed, ...rest } = annotations;
+            onUpdateAnnotations(rest);
+          },
+          onResize: (annotationId: string, bounds) => {
+            const current = annotations[annotationId];
+            if (current !== undefined) {
+              onUpdateAnnotations({ ...annotations, [annotationId]: { ...current, ...bounds } });
+            }
+          },
+        },
+      })),
+    [annotations, connecting, onUpdateAnnotations],
+  );
+
   // Transient renderer state. Pointer movement writes here and nowhere else, so no domain command,
   // validation, or projection runs until the gesture ends.
-  const [nodes, setNodes] = useState<DatumFlowNode[]>(canonicalNodes);
+  const [nodes, setNodes] = useState<CanvasNode[]>([...annotationNodes, ...canonicalNodes]);
 
   // A new canonical projection always wins: it arrives from an accepted command, a view switch, or
   // a selection change, and any in-flight preview is stale by definition.
   useEffect(() => {
-    setNodes(canonicalNodes);
-  }, [canonicalNodes]);
+    setNodes([...annotationNodes, ...canonicalNodes]);
+  }, [annotationNodes, canonicalNodes]);
 
   useEffect(() => {
     if (revealSignal > 0 && flow !== null) {
@@ -129,7 +184,7 @@ export function Diagram2D({
     }
   }, [flow, revealSignal]);
 
-  const handleNodesChange = useCallback((changes: NodeChange<DatumFlowNode>[]) => {
+  const handleNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
   }, []);
 
@@ -143,11 +198,35 @@ export function Diagram2D({
   );
 
   const handleNodeDragStop = useCallback(
-    (_event: unknown, _node: DatumFlowNode, draggedNodes: DatumFlowNode[]) => {
+    (_event: unknown, _node: CanvasNode, draggedNodes: CanvasNode[]) => {
+      // Annotation drags commit to the view's decoration record, not to element placement.
+      const movedAnnotations = draggedNodes.filter(
+        (node): node is AnnotationFlowNode => node.type === 'annotation',
+      );
+      if (movedAnnotations.length > 0) {
+        const next = { ...annotations };
+        for (const node of movedAnnotations) {
+          const current = next[node.data.annotation.id];
+          if (current !== undefined) {
+            next[node.data.annotation.id] = {
+              ...current,
+              x: Math.round(node.position.x),
+              y: Math.round(node.position.y),
+            };
+          }
+        }
+        onUpdateAnnotations(next);
+      }
+      const draggedElements = draggedNodes.filter(
+        (node): node is DatumFlowNode => node.type === 'datum',
+      );
+      if (draggedElements.length === 0) {
+        return;
+      }
       const canonicalPositions = new Map<string, Readonly<{ x: number; y: number }>>(
         projection.nodes.map((node) => [node.viewItemId, node.position]),
       );
-      const moves = draggedNodes
+      const moves = draggedElements
         .map((node) => ({ itemId: node.id, x: node.position.x, y: node.position.y }))
         .sort(compareItemIds);
       const moved = moves.some((move) => {
@@ -162,9 +241,17 @@ export function Diagram2D({
       }
       // Reset unconditionally. An accepted command replaces `canonicalNodes` and the effect above
       // re-synchronizes; a rejected one leaves it untouched, so this is what snaps the preview back.
-      setNodes(canonicalNodes);
+      setNodes([...annotationNodes, ...canonicalNodes]);
     },
-    [canonicalNodes, onMoveItems, placedItems, projection.nodes],
+    [
+      annotationNodes,
+      annotations,
+      canonicalNodes,
+      onMoveItems,
+      onUpdateAnnotations,
+      placedItems,
+      projection.nodes,
+    ],
   );
 
   const edges = useMemo<Edge[]>(
@@ -231,7 +318,7 @@ export function Diagram2D({
         );
       }}
     >
-      <ReactFlow<DatumFlowNode, Edge>
+      <ReactFlow<CanvasNode, Edge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -240,9 +327,16 @@ export function Diagram2D({
         onEdgesChange={() => undefined}
         onNodeDragStop={handleNodeDragStop}
         onConnect={connect}
-        onNodeClick={(event, node) =>
-          onSelect(node.data.elementId, event.ctrlKey || event.metaKey || event.shiftKey)
-        }
+        onNodeClick={(event, node) => {
+          if (node.type === 'datum') {
+            onSelect(node.data.elementId, event.ctrlKey || event.metaKey || event.shiftKey);
+          }
+        }}
+        onNodeDoubleClick={(_event, node) => {
+          if (node.type === 'datum') {
+            onDrillDown(node.data.elementId);
+          }
+        }}
         onEdgeClick={(event, edge) => {
           onEditRelationship({
             relationshipId: edge.id,
@@ -271,13 +365,15 @@ export function Diagram2D({
         maxZoom={1.8}
         proOptions={{ hideAttribution: true }}
       >
-        <Background
-          id="datum-grid"
-          variant={BackgroundVariant.Dots}
-          color="#c5d0cb"
-          gap={16}
-          size={1}
-        />
+        {showGrid ? (
+          <Background
+            id="datum-grid"
+            variant={BackgroundVariant.Dots}
+            color="#c5d0cb"
+            gap={16}
+            size={1}
+          />
+        ) : null}
         <Controls position="bottom-right" showInteractive={false} />
       </ReactFlow>
     </section>

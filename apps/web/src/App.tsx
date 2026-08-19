@@ -8,6 +8,7 @@ import type {
   ReadonlyProject,
   Relationship,
   RelationshipChanges,
+  ViewAnnotation,
   ViewItemMove,
 } from '@cd3/domain';
 
@@ -21,6 +22,7 @@ import type { CommandErrorData } from './editor/editor-store';
 import { useEditorStore, useEditorStoreApi } from './editor/EditorStoreProvider';
 import { isTextEntryTarget } from './editor/keyboard';
 import { downloadDataUrl, fileStem } from './editor/project-file';
+import { embedProjectInPng } from './editor/png-project';
 import { ICON_LABELS, spatialModelKeys } from './components/spatial-icon';
 import { useAutosave, type SaveStatus } from './editor/useAutosave';
 import { useRemoteSync } from './editor/useRemoteSync';
@@ -33,7 +35,7 @@ import {
   uniqueId,
 } from './editor/palette';
 import { getWorkspaceProjection3D, getWorkspaceView, workspaceViewIdsOf } from './workspace';
-import { probeElkLayoutWorker } from './workers/elk-worker-client';
+import { layoutViewInWorker, probeElkLayoutWorker } from './workers/elk-worker-client';
 
 const elementKindLabel = {
   component: 'Component',
@@ -330,11 +332,13 @@ function StageAddMenu({
   x,
   y,
   onPick,
+  onPickAnnotation,
   onClose,
 }: {
   readonly x: number;
   readonly y: number;
   readonly onPick: (entryId: string) => void;
+  readonly onPickAnnotation: (kind: ViewAnnotation['kind']) => void;
   readonly onClose: () => void;
 }) {
   const menu = useRef<HTMLDivElement>(null);
@@ -375,6 +379,19 @@ function StageAddMenu({
             </button>
           </li>
         ))}
+        <li className="stage-add-menu__divider" role="separator" aria-hidden="true" />
+        <li>
+          <button type="button" role="menuitem" onClick={() => onPickAnnotation('boundary')}>
+            <span className="palette-glyph palette-glyph--region" aria-hidden="true" />
+            Region
+          </button>
+        </li>
+        <li>
+          <button type="button" role="menuitem" onClick={() => onPickAnnotation('note')}>
+            <span className="palette-glyph palette-glyph--note" aria-hidden="true" />
+            Note
+          </button>
+        </li>
       </ul>
     </div>
   );
@@ -901,6 +918,71 @@ export function App() {
     [],
   );
 
+  const viewAnnotations = useMemo(
+    () => project.views[viewId]?.annotations ?? {},
+    [project.views, viewId],
+  );
+  const updateAnnotations = useCallback(
+    (annotations: Readonly<Record<string, ViewAnnotation>>) => {
+      execute({ type: 'update-view', viewId, changes: { annotations } });
+    },
+    [execute, viewId],
+  );
+  const addAnnotation = useCallback(
+    (kind: ViewAnnotation['kind'], point: { readonly x: number; readonly y: number }) => {
+      const annotationId = uniqueId(project, kind, (candidate) =>
+        Object.hasOwn(viewAnnotations, candidate),
+      );
+      const size = kind === 'boundary' ? { width: 420, height: 280 } : { width: 220, height: 64 };
+      updateAnnotations({
+        ...viewAnnotations,
+        [annotationId]: {
+          id: annotationId,
+          kind,
+          x: Math.round(point.x - size.width / 2),
+          y: Math.round(point.y - size.height / 2),
+          ...size,
+        } as ViewAnnotation,
+      });
+    },
+    [project, updateAnnotations, viewAnnotations],
+  );
+
+  // Auto-arrange: ELK lays out the current view once, committed as one undoable move command,
+  // and every placement stays hand-editable afterwards.
+  const [arranging, setArranging] = useState(false);
+  const arrangeView = useCallback(() => {
+    setArranging(true);
+    void layoutViewInWorker(workspaceView.twoD)
+      .then((preview) => {
+        const moves = Object.entries(preview.placements).map(([itemId, placement]) => ({
+          itemId,
+          x: Math.round(placement.x),
+          y: Math.round(placement.y),
+        }));
+        if (moves.length > 0) {
+          execute({ type: 'move-view-items', viewId, moves });
+          setRevealSignal((signal) => signal + 1);
+        }
+      })
+      .catch(() => window.alert('The layout worker is unavailable; nothing was moved.'))
+      .finally(() => setArranging(false));
+  }, [execute, viewId, workspaceView.twoD]);
+
+  // C4 drill-down: a double-clicked element opens the view scoped to it, when one exists.
+  const drillDown = useCallback(
+    (elementId: string) => {
+      const target = Object.keys(project.views).find(
+        (candidate) =>
+          candidate !== viewId && project.views[candidate]?.scopeElementId === elementId,
+      );
+      if (target !== undefined) {
+        setViewId(target);
+      }
+    },
+    [project.views, setViewId, viewId],
+  );
+
   const requestAddAt = useCallback(
     (request: { clientX: number; clientY: number; placement: { x: number; y: number } }) => {
       const stage = stageRef.current?.getBoundingClientRect();
@@ -1182,6 +1264,7 @@ export function App() {
 
   const replaceProject = useEditorStore((state) => state.replaceProject);
   const stageRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
   const adoptedProjectRef = useRef<ReadonlyProject | null>(null);
   const saveStatus = useAutosave(project, adoptedProjectRef);
   const saveStatusRef = useRef<SaveStatus>(saveStatus);
@@ -1205,14 +1288,25 @@ export function App() {
     if (!(surface instanceof HTMLElement)) {
       return;
     }
-    // What you see is what exports: the active canvas at double resolution on the app background.
-    void import('html-to-image')
+    // The grid hides for the capture, and the exported PNG carries the whole project as an iTXt
+    // chunk — Open project… accepts the image back, so the picture is also the file.
+    setExporting(true);
+    void new Promise((settle) => setTimeout(settle, 150))
+      .then(() => import('html-to-image'))
       .then(({ toPng }) => toPng(surface, { backgroundColor: '#f5f7f5', pixelRatio: 2 }))
       .then((dataUrl) => {
-        downloadDataUrl(`${fileStem(project.name)}.png`, dataUrl);
+        const bytes = Uint8Array.from(atob(dataUrl.split(',')[1] ?? ''), (char) =>
+          char.charCodeAt(0),
+        );
+        const stamped = embedProjectInPng(bytes, JSON.stringify(project));
+        const blob = new Blob([stamped.slice().buffer], { type: 'image/png' });
+        const url = URL.createObjectURL(blob);
+        downloadDataUrl(`${fileStem(project.name)}.png`, url);
+        URL.revokeObjectURL(url);
       })
-      .catch(() => window.alert('The image export failed.'));
-  }, [project.name]);
+      .catch(() => window.alert('The image export failed.'))
+      .finally(() => setExporting(false));
+  }, [project]);
   const warningCount = workspaceView.compiled.warnings.length;
 
   return (
@@ -1370,6 +1464,10 @@ export function App() {
                 dropPaletteEntry(entryId, addAt.placement);
                 setAddAt(undefined);
               }}
+              onPickAnnotation={(kind) => {
+                addAnnotation(kind, addAt.placement);
+                setAddAt(undefined);
+              }}
               onClose={() => setAddAt(undefined)}
             />
           )}
@@ -1385,6 +1483,7 @@ export function App() {
             onAdd={quickAdd}
             onDelete={() => selectedElementIds.forEach((elementId) => deleteElement(elementId))}
             onRevealInspector={inspectorOpen ? undefined : () => setInspectorOpen(true)}
+            onArrange={layoutWorkerState === 'ready' && !arranging ? arrangeView : undefined}
           />
           {mode === '2d' ? (
             <Diagram2D
@@ -1401,6 +1500,10 @@ export function App() {
               revealSignal={revealSignal}
               onRequestAddAt={requestAddAt}
               onEditRelationship={requestEditRelationship}
+              onDrillDown={drillDown}
+              showGrid={!exporting}
+              annotations={viewAnnotations}
+              onUpdateAnnotations={updateAnnotations}
             />
           ) : projection3D === undefined ? null : (
             <Suspense
@@ -1422,6 +1525,9 @@ export function App() {
                 revealSignal={revealSignal}
                 onRequestAddAt={requestAddAt}
                 pendingSourceElementId={pendingSourceId}
+                onDrillDown={drillDown}
+                showGrid={!exporting}
+                annotations={viewAnnotations}
               />
             </Suspense>
           )}

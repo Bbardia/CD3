@@ -12,6 +12,7 @@ export function StageQuickBar({
   onAdd,
   onDelete,
   onRevealInspector,
+  onArrange,
 }: {
   readonly selectionCount: number;
   /** Transient prompt for the active tool, announced where the pointer already is. */
@@ -20,6 +21,8 @@ export function StageQuickBar({
   readonly onDelete: () => void;
   /** Set only while the inspector is hidden; renders the way back. */
   readonly onRevealInspector?: (() => void) | undefined;
+  /** ELK auto-arrange for the current view; absent while the worker is busy or unavailable. */
+  readonly onArrange?: (() => void) | undefined;
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
 
@@ -73,6 +76,16 @@ export function StageQuickBar({
         >
           Delete{selectionCount > 1 ? ` (${String(selectionCount)})` : ''}
         </button>
+        {onArrange === undefined ? null : (
+          <button
+            type="button"
+            aria-label="Arrange this view automatically"
+            title="Auto-arrange the view (undoable)"
+            onClick={onArrange}
+          >
+            Arrange
+          </button>
+        )}
         {onRevealInspector === undefined ? null : (
           <button
             type="button"

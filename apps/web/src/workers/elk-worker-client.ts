@@ -1,6 +1,55 @@
+import type { LayoutInput, LayoutPreview, LayoutPreviewOptions } from '@cd3/layout/elk';
+
 interface WorkerProbeResponse {
   readonly id: string;
   readonly kind: 'error' | 'layout' | 'ready';
+}
+
+interface WorkerLayoutResponse extends WorkerProbeResponse {
+  readonly preview?: LayoutPreview;
+  readonly message?: string;
+}
+
+let layoutRequestCounter = 0;
+
+/** One worker per request keeps the client stateless; ELK layouts are rare, deliberate actions. */
+export async function layoutViewInWorker(
+  input: LayoutInput,
+  options: LayoutPreviewOptions = {},
+  timeoutMilliseconds = 15_000,
+): Promise<LayoutPreview> {
+  const worker = createElkLayoutWorker();
+  layoutRequestCounter += 1;
+  const requestId = `cd3-elk-layout-${String(layoutRequestCounter)}`;
+
+  return await new Promise<LayoutPreview>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      worker.terminate();
+      reject(new Error('The layout worker timed out.'));
+    }, timeoutMilliseconds);
+    worker.addEventListener('message', (event: MessageEvent<WorkerLayoutResponse>) => {
+      if (event.data.id !== requestId) {
+        return;
+      }
+      window.clearTimeout(timeout);
+      worker.terminate();
+      if (event.data.kind === 'layout' && event.data.preview !== undefined) {
+        resolve(event.data.preview);
+      } else {
+        reject(new Error(event.data.message ?? 'The layout worker failed.'));
+      }
+    });
+    worker.addEventListener(
+      'error',
+      () => {
+        window.clearTimeout(timeout);
+        worker.terminate();
+        reject(new Error('The layout worker crashed.'));
+      },
+      { once: true },
+    );
+    worker.postMessage({ id: requestId, kind: 'layout', input, options });
+  });
 }
 
 export function createElkLayoutWorker(): Worker {

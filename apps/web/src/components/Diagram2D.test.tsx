@@ -110,6 +110,10 @@ function renderDiagram(overrides: Partial<Parameters<typeof Diagram2D>[0]> = {})
       connecting={false}
       revealSignal={0}
       onRequestAddAt={() => undefined}
+      onDrillDown={() => undefined}
+      showGrid
+      annotations={{}}
+      onUpdateAnnotations={vi.fn()}
       onEditRelationship={vi.fn()}
       {...overrides}
     />,
@@ -320,6 +324,10 @@ describe('Diagram2D drag editing', () => {
         connecting={false}
         revealSignal={0}
         onRequestAddAt={() => undefined}
+        onDrillDown={() => undefined}
+        showGrid
+        annotations={{}}
+        onUpdateAnnotations={vi.fn()}
         onEditRelationship={vi.fn()}
       />,
     );
@@ -346,6 +354,10 @@ describe('Diagram2D drag editing', () => {
         connecting={false}
         revealSignal={0}
         onRequestAddAt={() => undefined}
+        onDrillDown={() => undefined}
+        showGrid
+        annotations={{}}
+        onUpdateAnnotations={vi.fn()}
         onEditRelationship={vi.fn()}
       />,
     );
