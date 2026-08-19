@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReadonlyProject } from '@cd3/domain';
 
 import { forgetProject, listRemoteVersions, readRemoteVersion } from '../editor/persistence';
+import { extractProjectFromPng } from '../editor/png-project';
 import { downloadProjectFile, parseProjectFile } from '../editor/project-file';
 import type { SaveStatus } from '../editor/useAutosave';
 
@@ -67,7 +68,7 @@ export function WorkspaceMenu({
       <input
         ref={filePicker}
         type="file"
-        accept=".json,.c4.json,application/json"
+        accept=".json,.c4.json,.png,application/json,image/png"
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -75,10 +76,16 @@ export function WorkspaceMenu({
           if (file === undefined) {
             return;
           }
-          void file.text().then((text) => {
+          const read =
+            file.type === 'image/png' || file.name.endsWith('.png')
+              ? file.arrayBuffer().then((buffer) => {
+                  return extractProjectFromPng(new Uint8Array(buffer)) ?? '';
+                })
+              : file.text();
+          void read.then((text) => {
             const parsed = parseProjectFile(text);
             if (parsed === undefined) {
-              window.alert('That file is not a valid CD3 project.');
+              window.alert('That file is not a CD3 project — or the PNG was not exported by CD3.');
               return;
             }
             onReplaceProject(parsed);
