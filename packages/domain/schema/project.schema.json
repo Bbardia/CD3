@@ -711,6 +711,71 @@
             "minLength": 1,
             "maxLength": 2000
           },
+          "annotations": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 96,
+              "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 96,
+                  "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "boundary",
+                    "note"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "color": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 24,
+                  "maximum": 4000
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 40,
+                  "maximum": 4000
+                },
+                "x": {
+                  "type": "number",
+                  "minimum": -1000000,
+                  "maximum": 1000000
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": -1000000,
+                  "maximum": 1000000
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "height",
+                "width",
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          },
           "id": {
             "type": "string",
             "minLength": 1,

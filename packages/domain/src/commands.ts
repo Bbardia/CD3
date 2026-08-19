@@ -82,7 +82,12 @@ export type RelationshipChanges = DeepReadonly<
 >;
 
 export type ViewChanges = DeepReadonly<
-  Partial<Pick<ViewInput, 'description' | 'name' | 'relationshipIds' | 'scopeElementId' | 'type'>>
+  Partial<
+    Pick<
+      ViewInput,
+      'annotations' | 'description' | 'name' | 'relationshipIds' | 'scopeElementId' | 'type'
+    >
+  >
 >;
 
 /** Places a newly created element in a view as part of the same command. */
@@ -237,6 +242,7 @@ const relationshipChangeFields = new Set([
 ]);
 
 const viewChangeFields = new Set([
+  'annotations',
   'description',
   'name',
   'relationshipIds',

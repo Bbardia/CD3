@@ -164,6 +164,34 @@ export const RelationshipSchema = z
   })
   .strict();
 
+/** Presentation-layer decoration for one view: boundary boxes and text notes, never semantics. */
+export const ViewAnnotationSchema = z
+  .object({
+    id: IdSchema,
+    kind: z.enum(['boundary', 'note']),
+    label: NameSchema.optional(),
+    color: z
+      .string()
+      .regex(/^#[0-9a-f]{6}$/i)
+      .optional(),
+    height: z.number().finite().min(24).max(4_000),
+    width: z.number().finite().min(40).max(4_000),
+    x: z.number().finite().min(-1_000_000).max(1_000_000),
+    y: z.number().finite().min(-1_000_000).max(1_000_000),
+  })
+  .strict();
+
+const AnnotationRecordSchema = z
+  .record(IdSchema, ViewAnnotationSchema)
+  .superRefine((annotations, context) => {
+    if (Object.keys(annotations).length > 64) {
+      context.addIssue({
+        code: 'custom',
+        message: 'A view may contain at most 64 annotations.',
+      });
+    }
+  });
+
 export const ViewItemSchema = z
   .object({
     elementId: ElementIdSchema,
@@ -201,6 +229,7 @@ const PlacementRecordSchema = z.record(IdSchema, Placement2DSchema);
 export const ViewSchema = z
   .object({
     description: DescriptionSchema.optional(),
+    annotations: AnnotationRecordSchema.optional(),
     id: ViewIdSchema,
     items: ItemRecordSchema,
     name: NameSchema,
@@ -519,6 +548,7 @@ export type ViewItemInput = z.input<typeof ViewItemSchema>;
 export type ViewType = View['type'];
 export type Placement2D = z.output<typeof Placement2DSchema>;
 export type Placement2DInput = z.input<typeof Placement2DSchema>;
+export type ViewAnnotation = z.output<typeof ViewAnnotationSchema>;
 export type ThreeDPolicy = z.output<typeof ThreeDPolicySchema>;
 export type Vector3 = z.output<typeof Vector3Schema>;
 export type CameraBookmark = z.output<typeof CameraBookmarkSchema>;

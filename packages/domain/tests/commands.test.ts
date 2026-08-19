@@ -817,6 +817,57 @@ describe('view authoring', () => {
   });
 });
 
+describe('view annotations', () => {
+  it('adds, replaces, and removes annotations through update-view, undoably', () => {
+    const withRegion = applyCommand(createProject(), {
+      type: 'update-view',
+      viewId: 'containers',
+      changes: {
+        annotations: {
+          'region-net': {
+            id: 'region-net',
+            kind: 'boundary',
+            label: 'Internal network',
+            x: 50,
+            y: 50,
+            width: 400,
+            height: 260,
+          },
+        },
+      },
+    });
+    expect(withRegion.project.views['containers']?.annotations?.['region-net']).toMatchObject({
+      kind: 'boundary',
+      label: 'Internal network',
+    });
+    expectValid(withRegion.project);
+
+    const cleared = applyCommand(withRegion.project, {
+      type: 'update-view',
+      viewId: 'containers',
+      changes: { annotations: {} },
+    });
+    expect(Object.keys(cleared.project.views['containers']?.annotations ?? {})).toHaveLength(0);
+  });
+
+  it('rejects an annotation the schema does not allow', () => {
+    expectCommandError(
+      createProject(),
+      {
+        type: 'update-view',
+        viewId: 'containers',
+        changes: {
+          annotations: {
+            bad: { id: 'bad', kind: 'boundary', x: 0, y: 0, width: 1, height: 1 },
+          },
+        },
+      },
+      'INVALID_PROJECT',
+      'View is invalid',
+    );
+  });
+});
+
 describe('applyCommands batches', () => {
   it('matches sequential applyCommand results exactly', () => {
     const batch: DomainCommand[] = [
