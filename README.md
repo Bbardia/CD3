@@ -55,13 +55,13 @@ occurrences of one element in a view, and Isoflow-compatible files.
 
 ## Develop
 
-Requires Node.js 22 (`.node-version`) and pnpm 11 (pinned by `packageManager`; `corepack enable`
+Requires Node.js 22.12+ (`.node-version`) and pnpm 11 (pinned by `packageManager`; `corepack enable`
 provides it).
 
 ```sh
 pnpm install
 pnpm dev     # web on http://127.0.0.1:5173, API on http://127.0.0.1:3100
-pnpm check   # lint, typecheck, test, build
+pnpm check   # format, lint, typecheck, test, build, production smoke check
 ```
 
 `pnpm build && pnpm start` serves the whole app as one process on `127.0.0.1:3100`. With the API
@@ -78,9 +78,9 @@ regenerate the committed JSON Schema with `pnpm generate:schema`.
 | `@cd3/fixtures` | Northstar Commerce and deterministic generated fixtures   |
 
 Edits save to the browser and, when the API runs, to a versioned JSON snapshot with timestamped
-history under `apps/api/data/`. On open, disk wins over the browser copy, which wins over the
-bundled sample. Never commit `.env` files, project data, or backups — `data/` and `release/` are
-ignored by Git.
+history under `apps/api/data/`. On open, an unsynced browser recovery wins; otherwise disk wins over
+the synced browser cache, and the bundled sample is the final fallback. Never commit `.env` files,
+project data, or backups — `data/` and `release/` are ignored by Git.
 
 CD3 is an original implementation: it borrows the general idea of synchronized model-driven
 architecture views, not code, assets, examples, or visual trade dress from Isoflow or any other

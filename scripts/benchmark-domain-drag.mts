@@ -5,7 +5,7 @@
  * target: the P0 plan requires publishing observed values and naming the first real bottleneck,
  * not inventing thresholds. Run it on the intended client hardware before quoting any figure.
  *
- *   pnpm exec tsx scripts/benchmark-domain-drag.mts
+ *   pnpm benchmark:domain-drag
  */
 import {
   applyCommandToHistory,

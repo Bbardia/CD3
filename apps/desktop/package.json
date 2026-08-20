@@ -6,14 +6,14 @@
   "description": "Double-clickable Mac shell around the CD3 loopback application.",
   "main": "dist/main.cjs",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/main.cjs --log-level=warning",
+    "build": "node scripts/build.mjs",
     "dist": "pnpm build && electron-builder --mac --config electron-builder.yml",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "@cd3/api": "workspace:*",
     "@types/node": "^22.19.15",
-    "electron": "^38.4.1",
+    "electron": "^43.4.1",
     "electron-builder": "^26.0.12",
     "esbuild": "^0.28.2"
   }

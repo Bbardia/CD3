@@ -5,26 +5,27 @@ machine (a terminal, CI, editor tooling) can read the project and apply the same
 commands the UI executes.
 
 Base URL: `http://127.0.0.1:3100` with `pnpm dev` or `pnpm start` (`PORT` in `apps/api/.env`
-overrides, see `.env.example`). The packaged Mac app runs its own copy on a random port that stops
-with the app — script against a `pnpm start` server instead.
+overrides, see `.env.example`). The packaged Mac app runs its own copy on dedicated loopback port
+`43173`, which stops with the app. Only one packaged app instance runs at a time.
 
 ## Endpoints
 
-| Method   | Path                       | Purpose                                                 |
-| -------- | -------------------------- | ------------------------------------------------------- |
-| `GET`    | `/api/health`              | Liveness and schema version                             |
-| `GET`    | `/api/project`             | The whole project; `ETag` is the revision               |
-| `PUT`    | `/api/project`             | Replace the snapshot (honors `If-Match`)                |
-| `DELETE` | `/api/project`             | Forget the snapshot and its history                     |
-| `GET`    | `/api/project/revision`    | `{"revision":"…"}` — cheap to poll                      |
-| `GET`    | `/api/project/history`     | Checkpoint ids, newest first                            |
-| `GET`    | `/api/project/history/:id` | One checkpoint, restorable via `PUT /api/project`       |
-| `POST`   | `/api/commands`            | Apply validated domain commands                         |
+| Method   | Path                       | Purpose                                                  |
+| -------- | -------------------------- | -------------------------------------------------------- |
+| `GET`    | `/api/health`              | Liveness and schema version                              |
+| `GET`    | `/api/project`             | The whole project; `ETag` is the revision                |
+| `PUT`    | `/api/project`             | Replace/create (`If-Match`; create-only `If-None-Match`) |
+| `DELETE` | `/api/project`             | Forget the snapshot/history (optionally `If-Match`)      |
+| `GET`    | `/api/project/revision`    | `{"revision":"…"}` — cheap to poll                       |
+| `GET`    | `/api/project/history`     | Checkpoint ids, newest first                             |
+| `GET`    | `/api/project/history/:id` | One checkpoint, restorable via `PUT /api/project`        |
+| `POST`   | `/api/commands`            | Apply validated domain commands                          |
 
 ```sh
 curl 127.0.0.1:3100/api/project             # the whole project, ETag = revision
 curl 127.0.0.1:3100/api/project/revision
 curl -X PUT 127.0.0.1:3100/api/project -d @my.c4.json -H 'content-type: application/json'
+curl -X PUT 127.0.0.1:3100/api/project -d @my.c4.json -H 'content-type: application/json' -H 'If-None-Match: *'
 curl 127.0.0.1:3100/api/project/history
 ```
 
@@ -64,9 +65,15 @@ in `packages/domain/src/commands.ts`.
 Project reads and writes (`GET`/`PUT /api/project`, `POST /api/commands`) return the snapshot's
 content-hash revision as `ETag`. Pass it back as `baseRevision` (commands) or `If-Match` (PUT) and a
 write against a moved snapshot is refused with `409` plus the current revision instead of clobbering
-it — guard checks and writes are serialized server-side, so two concurrent writers can never both
-win. When restoring a checkpoint, take the current revision from `GET /api/project/revision`, not
-from the checkpoint itself.
+it. `If-Match` also refuses the write if that snapshot was deleted in the meantime. To create only
+when no snapshot exists, send `If-None-Match: *`; two concurrent initial creators cannot both win.
+Conditional deletes accept `If-Match` as well. All guard checks and mutations are serialized
+server-side. Revision conflicts return `code: "REVISION_CONFLICT"` and `revision`, which is `null`
+when no usable revision exists. An on-disk snapshot that is unreadable or no longer valid is
+reported as `SNAPSHOT_INVALID`, not as missing, and a create-only PUT will not overwrite it. After
+recovering the old file, an unguarded PUT or DELETE is the explicit repair path. When restoring a
+checkpoint, take the current revision from `GET /api/project/revision`, not from the checkpoint
+itself.
 
 The open app plays by the same rules: it saves with `If-Match` and polls the revision, so a script's
 changes appear in a running app within a few seconds. If an app edit loses that race, disk wins and
@@ -77,6 +84,7 @@ dropped.
 
 - Request bodies up to 8 MB; JSON nesting up to 32 levels (400 beyond either).
 - One batch holds 1–100 commands.
+- Requests must use a literal loopback `Host`; browser mutations also require a loopback `Origin`.
 
 ## Data
 

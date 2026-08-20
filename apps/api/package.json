@@ -3,9 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./app": {
+      "types": "./src/app.ts",
+      "development": "./src/app.ts",
+      "import": "./dist/app.js",
+      "default": "./dist/app.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx --conditions=development watch src/server.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
