@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   copyFile,
+  lstat,
   mkdir,
   readdir,
   readFile,
@@ -114,26 +115,69 @@ export interface StoredSnapshot {
   readonly revision: string;
 }
 
+export type SnapshotState =
+  | { readonly status: 'absent' }
+  | { readonly status: 'invalid' }
+  | { readonly snapshot: StoredSnapshot; readonly status: 'found' };
+
 function revisionOf(serialized: string): string {
   return createHash('sha256').update(serialized).digest('hex').slice(0, 16);
 }
 
-/** Reads the stored snapshot, or undefined when nothing has been saved yet. */
-export async function readSnapshot(): Promise<StoredSnapshot | undefined> {
-  // A snapshot that is unreadable, not JSON, or no longer valid against the schema is treated as
-  // absent rather than served: clients fall back instead of receiving something the domain rejects.
+function errorCode(error: unknown): string | undefined {
+  return typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
+}
+
+/**
+ * Distinguishes a missing snapshot from a path that exists but is unreadable or no longer valid.
+ * That distinction prevents a create-only client from replacing recoverable legacy/corrupt bytes.
+ */
+export async function readSnapshotState(): Promise<SnapshotState> {
+  let serialized: string;
   try {
-    const serialized = await readFile(snapshotPath(), 'utf8');
-    const result = ProjectSchema.safeParse(JSON.parse(serialized));
-    return result.success ? { project: result.data, revision: revisionOf(serialized) } : undefined;
-  } catch {
-    return undefined;
+    serialized = await readFile(snapshotPath(), 'utf8');
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') {
+      return { status: 'invalid' };
+    }
+    // ENOENT can also mean a broken symlink. Count any directory entry as existing so guarded
+    // creates cannot overwrite it; an unguarded replace/delete remains the explicit recovery path.
+    try {
+      await lstat(snapshotPath());
+      return { status: 'invalid' };
+    } catch (statError) {
+      return errorCode(statError) === 'ENOENT' ? { status: 'absent' } : { status: 'invalid' };
+    }
   }
+
+  try {
+    const result = ProjectSchema.safeParse(JSON.parse(serialized));
+    return result.success
+      ? {
+          snapshot: { project: result.data, revision: revisionOf(serialized) },
+          status: 'found',
+        }
+      : { status: 'invalid' };
+  } catch {
+    return { status: 'invalid' };
+  }
+}
+
+/** Reads the valid stored snapshot, or undefined when it is missing or invalid. */
+export async function readSnapshot(): Promise<StoredSnapshot | undefined> {
+  const state = await readSnapshotState();
+  return state.status === 'found' ? state.snapshot : undefined;
 }
 
 /** The current revision alone; absent exactly when readSnapshot would treat the file as absent. */
 export async function readSnapshotRevision(): Promise<string | undefined> {
-  return (await readSnapshot())?.revision;
+  const state = await readSnapshotState();
+  return state.status === 'found' ? state.snapshot.revision : undefined;
 }
 
 /**

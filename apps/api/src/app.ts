@@ -2,13 +2,12 @@ import { existsSync } from 'node:fs';
 
 import fastifyStatic from '@fastify/static';
 import { applyCommands, DomainCommandError, type DomainCommand } from '@cd3/domain';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 
 import {
   deleteSnapshot,
   listSnapshotVersions,
-  readSnapshot,
-  readSnapshotRevision,
+  readSnapshotState,
   readSnapshotVersion,
   withSnapshotLock,
   writeSnapshot,
@@ -78,12 +77,165 @@ function baseRevisionOf(body: unknown): string | undefined {
     : undefined;
 }
 
+interface RevisionTag {
+  readonly revision: string;
+  readonly weak: boolean;
+}
+
+type RevisionCondition =
+  | { readonly kind: 'any-current' }
+  | { readonly kind: 'revisions'; readonly tags: readonly RevisionTag[] };
+
+/**
+ * Accepts both standards-shaped entity tags (`"revision"`) and the unquoted revision tokens the
+ * existing app sends. Supporting lists costs little and keeps the precondition behavior predictable
+ * for scripting clients.
+ */
+function revisionConditionOf(
+  value: string | readonly string[] | undefined,
+): RevisionCondition | 'invalid' | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const candidates = (typeof value === 'string' ? value : value.join(','))
+    .split(',')
+    .map((candidate) => candidate.trim());
+  if (candidates.length === 0 || candidates.some((candidate) => candidate === '')) {
+    return 'invalid';
+  }
+  if (candidates.includes('*')) {
+    return candidates.length === 1 ? { kind: 'any-current' } : 'invalid';
+  }
+
+  const tags: RevisionTag[] = [];
+  for (const rawCandidate of candidates) {
+    const weak = rawCandidate.startsWith('W/');
+    const candidate = weak ? rawCandidate.slice(2) : rawCandidate;
+    if (candidate === '' || (weak && candidate === '*')) {
+      return 'invalid';
+    }
+    const quoted = candidate.startsWith('"') || candidate.endsWith('"');
+    if (quoted) {
+      if (
+        candidate.length < 2 ||
+        !candidate.startsWith('"') ||
+        !candidate.endsWith('"') ||
+        candidate.slice(1, -1).includes('"')
+      ) {
+        return 'invalid';
+      }
+      tags.push({ revision: candidate.slice(1, -1), weak });
+    } else {
+      // Bare values are a compatibility affordance, but whitespace/control characters are never
+      // valid revision tokens and make intermediary parsing ambiguous.
+      if (
+        [...candidate].some((character) => {
+          const code = character.charCodeAt(0);
+          return /\s/.test(character) || code <= 31 || code === 127;
+        })
+      ) {
+        return 'invalid';
+      }
+      tags.push({ revision: candidate, weak });
+    }
+  }
+  return { kind: 'revisions', tags };
+}
+
+function conditionMatches(
+  condition: RevisionCondition,
+  current: string | undefined,
+  currentExists: boolean,
+  weakComparison: boolean,
+): boolean {
+  if (condition.kind === 'any-current') {
+    return currentExists;
+  }
+  if (current === undefined) {
+    return false;
+  }
+  return condition.tags.some((tag) => tag.revision === current && (weakComparison || !tag.weak));
+}
+
+function revisionConflict(reply: FastifyReply, error: string, current: string | undefined) {
+  if (current !== undefined) {
+    reply.header('etag', current);
+  }
+  return reply.code(409).send({
+    code: 'REVISION_CONFLICT',
+    error,
+    // Null means the existing state has no usable current revision (missing or invalid on disk).
+    revision: current ?? null,
+  });
+}
+
+function invalidRevisionHeader(reply: FastifyReply, name: 'If-Match' | 'If-None-Match') {
+  return reply.code(400).send({
+    error: `${name} must be * or a comma-separated list of revision entity tags.`,
+  });
+}
+
+function invalidStoredSnapshot(reply: FastifyReply) {
+  return reply.code(500).send({
+    code: 'SNAPSHOT_INVALID',
+    error:
+      'The stored project exists but is unreadable or invalid. Replace it with an unguarded PUT or delete it explicitly.',
+  });
+}
+
+function isLoopbackAuthority(value: string | undefined): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  const match = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::([0-9]{1,5}))?$/i.exec(value);
+  if (match === null) {
+    return false;
+  }
+  const port = match[1];
+  return port === undefined || (Number(port) >= 1 && Number(port) <= 65_535);
+}
+
+function isLoopbackOrigin(value: string): boolean {
+  const match = /^https?:\/\/(.+)$/i.exec(value);
+  return match !== null && isLoopbackAuthority(match[1]);
+}
+
+const MUTATING_METHODS = new Set(['DELETE', 'PATCH', 'POST', 'PUT']);
+
 export function buildServer(): FastifyInstance {
   const server = Fastify({
     // A generated project of a few hundred elements serialises well under a megabyte, but the
     // default 1 MB body limit leaves no headroom for descriptions and properties.
     bodyLimit: 8 * 1024 * 1024,
     logger: process.env.NODE_ENV !== 'test',
+  });
+
+  // Binding to 127.0.0.1 alone does not stop DNS rebinding: an attacker-controlled hostname can
+  // resolve to loopback and become same-origin with this API. Require a literal loopback Host, and
+  // reject browser mutations whose Origin is not loopback while leaving origin-less CLI use intact.
+  server.addHook('onRequest', async (request, reply) => {
+    if (!isLoopbackAuthority(request.headers.host)) {
+      return reply.code(403).send({ error: 'CD3 accepts requests only on a loopback hostname.' });
+    }
+    const origin = request.headers.origin;
+    if (
+      request.url.startsWith('/api/') &&
+      MUTATING_METHODS.has(request.method) &&
+      origin !== undefined &&
+      !isLoopbackOrigin(origin)
+    ) {
+      return reply.code(403).send({ error: 'Cross-origin API mutations are not allowed.' });
+    }
+  });
+
+  // Project state is mutable and revision-polled. Never let a browser or intermediary satisfy an
+  // API read from a stale cache, and prevent MIME sniffing on both JSON and static responses.
+  server.addHook('onSend', async (request, reply, payload) => {
+    reply.header('x-content-type-options', 'nosniff');
+    if (request.url.startsWith('/api/')) {
+      reply.header('cache-control', 'no-store');
+    }
+    return payload;
   });
 
   // Production mode: when a built web app is present, this server is the whole application.
@@ -106,19 +258,26 @@ export function buildServer(): FastifyInstance {
   }));
 
   server.get('/api/project', async (_request, reply) => {
-    const stored = await readSnapshot();
-    if (stored === undefined) {
+    const state = await readSnapshotState();
+    if (state.status === 'absent') {
       return reply.code(404).send({ error: 'No project snapshot has been saved yet.' });
     }
+    if (state.status === 'invalid') {
+      return invalidStoredSnapshot(reply);
+    }
+    const stored = state.snapshot;
     return reply.header('etag', stored.revision).send(stored.project);
   });
 
   server.get('/api/project/revision', async (_request, reply) => {
-    const revision = await readSnapshotRevision();
-    if (revision === undefined) {
+    const state = await readSnapshotState();
+    if (state.status === 'absent') {
       return reply.code(404).send({ error: 'No project snapshot has been saved yet.' });
     }
-    return { revision };
+    if (state.status === 'invalid') {
+      return invalidStoredSnapshot(reply);
+    }
+    return { revision: state.snapshot.revision };
   });
 
   server.put('/api/project', async (request, reply) => {
@@ -127,18 +286,39 @@ export function buildServer(): FastifyInstance {
         .code(400)
         .send({ error: `Project is invalid: nesting exceeds ${String(MAX_BODY_DEPTH)} levels.` });
     }
+    const ifMatch = revisionConditionOf(request.headers['if-match']);
+    if (ifMatch === 'invalid') {
+      return invalidRevisionHeader(reply, 'If-Match');
+    }
+    const ifNoneMatch = revisionConditionOf(request.headers['if-none-match']);
+    if (ifNoneMatch === 'invalid') {
+      return invalidRevisionHeader(reply, 'If-None-Match');
+    }
     // The guard and the write happen under one lock, so a writer that states where it started from
     // can never interleave with another writer and clobber a snapshot it did not read.
     return withSnapshotLock(async () => {
-      const expected = request.headers['if-match'];
-      if (typeof expected === 'string' && expected !== '') {
-        const current = await readSnapshotRevision();
-        if (current !== undefined && current !== expected) {
-          return reply.code(409).header('etag', current).send({
-            error: 'The stored project changed since this copy was read.',
-            revision: current,
-          });
-        }
+      const state =
+        ifMatch === undefined && ifNoneMatch === undefined ? undefined : await readSnapshotState();
+      const current = state?.status === 'found' ? state.snapshot.revision : undefined;
+      const currentExists = state !== undefined && state.status !== 'absent';
+      if (ifMatch !== undefined && !conditionMatches(ifMatch, current, currentExists, false)) {
+        return revisionConflict(
+          reply,
+          state?.status === 'invalid'
+            ? 'The stored project exists but has no valid revision. Replace or delete it explicitly.'
+            : current === undefined
+              ? 'The stored project was deleted since this copy was read.'
+              : 'The stored project changed since this copy was read.',
+          current,
+        );
+      }
+      // If-None-Match uses weak comparison. Most importantly, `*` is an atomic create-only guard:
+      // two first-time writers enter this lock in turn, and only the first observes no snapshot.
+      if (
+        ifNoneMatch !== undefined &&
+        conditionMatches(ifNoneMatch, current, currentExists, true)
+      ) {
+        return revisionConflict(reply, 'A project snapshot already exists.', current);
       }
       try {
         const stored = await writeSnapshot(request.body);
@@ -168,18 +348,25 @@ export function buildServer(): FastifyInstance {
       });
     }
     return withSnapshotLock(async () => {
-      const stored = await readSnapshot();
-      if (stored === undefined) {
-        return reply.code(409).send({
-          error: 'No project snapshot to edit. Save one first: open the app or PUT /api/project.',
-        });
+      const state = await readSnapshotState();
+      if (state.status === 'absent') {
+        return revisionConflict(
+          reply,
+          'No project snapshot to edit. Save one first: open the app or PUT /api/project.',
+          undefined,
+        );
       }
+      if (state.status === 'invalid') {
+        return invalidStoredSnapshot(reply);
+      }
+      const stored = state.snapshot;
       const baseRevision = baseRevisionOf(request.body);
       if (baseRevision !== undefined && baseRevision !== stored.revision) {
-        return reply.code(409).header('etag', stored.revision).send({
-          error: 'The stored project changed since baseRevision was read.',
-          revision: stored.revision,
-        });
+        return revisionConflict(
+          reply,
+          'The stored project changed since baseRevision was read.',
+          stored.revision,
+        );
       }
 
       // One validation boundary for the whole batch; a failure reports its position and nothing
@@ -216,9 +403,30 @@ export function buildServer(): FastifyInstance {
     return snapshot;
   });
 
-  server.delete('/api/project', async (_request, reply) => {
-    await withSnapshotLock(deleteSnapshot);
-    return reply.code(204).send();
+  server.delete('/api/project', async (request, reply) => {
+    const ifMatch = revisionConditionOf(request.headers['if-match']);
+    if (ifMatch === 'invalid') {
+      return invalidRevisionHeader(reply, 'If-Match');
+    }
+    return withSnapshotLock(async () => {
+      if (ifMatch !== undefined) {
+        const state = await readSnapshotState();
+        const current = state.status === 'found' ? state.snapshot.revision : undefined;
+        if (!conditionMatches(ifMatch, current, state.status !== 'absent', false)) {
+          return revisionConflict(
+            reply,
+            state.status === 'invalid'
+              ? 'The stored project exists but has no valid revision. Delete it explicitly.'
+              : current === undefined
+                ? 'The project snapshot was already deleted.'
+                : 'The stored project changed since this delete was requested.',
+            current,
+          );
+        }
+      }
+      await deleteSnapshot();
+      return reply.code(204).send();
+    });
   });
 
   return server;

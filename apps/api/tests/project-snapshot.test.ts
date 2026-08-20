@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -28,11 +28,22 @@ function startServer() {
   return server;
 }
 
+async function saveSample(server: ReturnType<typeof startServer>): Promise<string> {
+  const saved = await server.inject({
+    method: 'PUT',
+    url: '/api/project',
+    payload: northstarCommerceProject,
+  });
+  return (saved.json() as { revision: string }).revision;
+}
+
 describe('project snapshots', () => {
   it('reports no snapshot before anything has been saved', async () => {
     const response = await startServer().inject({ method: 'GET', url: '/api/project' });
 
     expect(response.statusCode).toBe(404);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
   });
 
   it('round-trips a saved project byte-for-byte', async () => {
@@ -116,18 +127,205 @@ describe('project snapshots', () => {
     expect(rejected.json().error).toContain('Project is invalid');
     expect(loaded.json()).toEqual(northstarCommerceProject);
   });
-});
 
-describe('command endpoint', () => {
-  async function saveSample(server: ReturnType<typeof startServer>) {
-    const saved = await server.inject({
+  it('rejects a project with no view before it can reach the editor', async () => {
+    const server = startServer();
+    const revision = await saveSample(server);
+
+    const rejected = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      headers: { 'if-match': revision },
+      payload: {
+        ...northstarCommerceProject,
+        threeD: { ...northstarCommerceProject.threeD, bookmarks: {} },
+        views: {},
+      },
+    });
+
+    expect(rejected.statusCode).toBe(400);
+    expect((rejected.json() as { error: string }).error).toContain(
+      'A project needs at least one view.',
+    );
+    const loaded = await server.inject({ method: 'GET', url: '/api/project' });
+    expect(loaded.headers.etag).toBe(revision);
+    expect(loaded.json()).toEqual(northstarCommerceProject);
+  });
+
+  it('does not classify an existing legacy-invalid snapshot as absent or overwrite it on create', async () => {
+    const server = startServer();
+    const legacyInvalid = {
+      ...northstarCommerceProject,
+      threeD: { ...northstarCommerceProject.threeD, bookmarks: {} },
+      views: {},
+    };
+    const path = join(dataDirectory, 'project.c4.json');
+    await writeFile(path, JSON.stringify(legacyInvalid), 'utf8');
+
+    const loaded = await server.inject({ method: 'GET', url: '/api/project' });
+    const revision = await server.inject({ method: 'GET', url: '/api/project/revision' });
+    const createOnly = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      headers: { 'if-none-match': '*' },
+      payload: northstarCommerceProject,
+    });
+
+    expect(loaded.statusCode).toBe(500);
+    expect(loaded.json()).toMatchObject({ code: 'SNAPSHOT_INVALID' });
+    expect(revision.statusCode).toBe(500);
+    expect(createOnly.statusCode).toBe(409);
+    expect(createOnly.json()).toMatchObject({ code: 'REVISION_CONFLICT', revision: null });
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(legacyInvalid);
+
+    // An explicit unguarded replace remains available after the user has recovered the old bytes.
+    const replaced = await server.inject({
       method: 'PUT',
       url: '/api/project',
       payload: northstarCommerceProject,
     });
-    return (saved.json() as { revision: string }).revision;
-  }
+    expect(replaced.statusCode).toBe(200);
+  });
+});
 
+describe('snapshot preconditions', () => {
+  it('rejects malformed revision conditions instead of treating them as unguarded writes', async () => {
+    const server = startServer();
+
+    for (const value of ['W/', 'W/*', '*, "other"', '"unterminated']) {
+      const response = await server.inject({
+        method: 'PUT',
+        url: '/api/project',
+        headers: { 'if-none-match': value },
+        payload: northstarCommerceProject,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+
+    expect((await server.inject({ method: 'GET', url: '/api/project' })).statusCode).toBe(404);
+  });
+
+  it('serializes concurrent create-only writers so exactly one initial snapshot wins', async () => {
+    const server = startServer();
+    const writerA = { ...northstarCommerceProject, name: 'Writer A' };
+    const writerB = { ...northstarCommerceProject, name: 'Writer B' };
+
+    const [first, second] = await Promise.all([
+      server.inject({
+        method: 'PUT',
+        url: '/api/project',
+        headers: { 'if-none-match': '*' },
+        payload: writerA,
+      }),
+      server.inject({
+        method: 'PUT',
+        url: '/api/project',
+        headers: { 'if-none-match': '*' },
+        payload: writerB,
+      }),
+    ]);
+
+    expect([first.statusCode, second.statusCode].sort()).toEqual([200, 409]);
+    const winner = first.statusCode === 200 ? first : second;
+    const loser = first.statusCode === 409 ? first : second;
+    const winningRevision = (winner.json() as { revision: string }).revision;
+    expect(loser.headers.etag).toBe(winningRevision);
+    expect(loser.json()).toMatchObject({
+      code: 'REVISION_CONFLICT',
+      revision: winningRevision,
+    });
+
+    const loaded = await server.inject({ method: 'GET', url: '/api/project' });
+    expect((loaded.json() as { name: string }).name).toBe(
+      first.statusCode === 200 ? 'Writer A' : 'Writer B',
+    );
+  });
+
+  it('rejects a stale If-Match after deletion instead of recreating the snapshot', async () => {
+    const server = startServer();
+    const revision = await saveSample(server);
+    await server.inject({ method: 'DELETE', url: '/api/project' });
+
+    const staleWrite = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      headers: { 'if-match': revision },
+      payload: { ...northstarCommerceProject, name: 'Must not return' },
+    });
+
+    expect(staleWrite.statusCode).toBe(409);
+    expect(staleWrite.headers.etag).toBeUndefined();
+    expect(staleWrite.json()).toMatchObject({
+      code: 'REVISION_CONFLICT',
+      revision: null,
+    });
+    expect((await server.inject({ method: 'GET', url: '/api/project' })).statusCode).toBe(404);
+  });
+
+  it('lets only one guarded update or delete win from the same revision', async () => {
+    const server = startServer();
+    const revision = await saveSample(server);
+
+    const [updated, deleted] = await Promise.all([
+      server.inject({
+        method: 'PUT',
+        url: '/api/project',
+        headers: { 'if-match': `"${revision}"` },
+        payload: { ...northstarCommerceProject, name: 'Guarded update' },
+      }),
+      server.inject({
+        method: 'DELETE',
+        url: '/api/project',
+        headers: { 'if-match': revision },
+      }),
+    ]);
+
+    expect(
+      [updated.statusCode, deleted.statusCode].filter((status) => status === 409),
+    ).toHaveLength(1);
+    expect(updated.statusCode === 200 || deleted.statusCode === 204).toBe(true);
+
+    const loaded = await server.inject({ method: 'GET', url: '/api/project' });
+    if (updated.statusCode === 200) {
+      expect(deleted.statusCode).toBe(409);
+      expect(loaded.statusCode).toBe(200);
+      expect((loaded.json() as { name: string }).name).toBe('Guarded update');
+    } else {
+      expect(updated.statusCode).toBe(409);
+      expect(deleted.statusCode).toBe(204);
+      expect(loaded.statusCode).toBe(404);
+    }
+  });
+
+  it('rejects a guarded delete after the snapshot changes and returns the current revision', async () => {
+    const server = startServer();
+    const staleRevision = await saveSample(server);
+    const replacement = await server.inject({
+      method: 'PUT',
+      url: '/api/project',
+      headers: { 'if-match': staleRevision },
+      payload: { ...northstarCommerceProject, name: 'Replacement' },
+    });
+    const currentRevision = (replacement.json() as { revision: string }).revision;
+
+    const deleted = await server.inject({
+      method: 'DELETE',
+      url: '/api/project',
+      headers: { 'if-match': staleRevision },
+    });
+
+    expect(deleted.statusCode).toBe(409);
+    expect(deleted.headers.etag).toBe(currentRevision);
+    expect(deleted.json()).toMatchObject({
+      code: 'REVISION_CONFLICT',
+      revision: currentRevision,
+    });
+    const loaded = await server.inject({ method: 'GET', url: '/api/project' });
+    expect((loaded.json() as { name: string }).name).toBe('Replacement');
+  });
+});
+
+describe('command endpoint', () => {
   it('applies a command against the stored snapshot and bumps the revision', async () => {
     const server = startServer();
     const revision = await saveSample(server);
@@ -301,14 +499,14 @@ describe('command endpoint', () => {
     expect(put.statusCode).toBe(400);
   });
 
-  it('treats a corrupt snapshot file as absent everywhere instead of crashing', async () => {
+  it('reports a corrupt snapshot as invalid instead of absent or crashing', async () => {
     const server = startServer();
     await saveSample(server);
     await writeFile(join(dataDirectory, 'project.c4.json'), '{ not json', 'utf8');
 
-    expect((await server.inject({ method: 'GET', url: '/api/project' })).statusCode).toBe(404);
+    expect((await server.inject({ method: 'GET', url: '/api/project' })).statusCode).toBe(500);
     expect((await server.inject({ method: 'GET', url: '/api/project/revision' })).statusCode).toBe(
-      404,
+      500,
     );
     expect(
       (
@@ -318,7 +516,7 @@ describe('command endpoint', () => {
           payload: { command: { type: 'delete-element', elementId: 'x' } },
         })
       ).statusCode,
-    ).toBe(409);
+    ).toBe(500);
   });
 
   it('keeps the revision stable when identical content is written again', async () => {
