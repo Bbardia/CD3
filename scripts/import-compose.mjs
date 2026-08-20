@@ -11,6 +11,9 @@
  */
 
 const API = process.env.CD3_API ?? 'http://127.0.0.1:3100';
+// Keep this in sync with the API's intentionally small atomic command-batch ceiling. Splitting an
+// import would leave a half-created architecture behind if a later batch failed.
+const MAX_ATOMIC_COMMANDS = 100;
 
 function slug(name) {
   const cleaned = String(name)
@@ -59,6 +62,19 @@ async function main() {
   const systemId = slug(stackName);
   const viewId = `${systemId}-containers`;
   const commands = [];
+  const serviceIds = new Map();
+
+  for (const [serviceName] of services) {
+    const id = `${systemId}-${slug(serviceName)}`;
+    const previous = serviceIds.get(id);
+    if (previous !== undefined) {
+      console.error(
+        `Services "${previous}" and "${serviceName}" both normalize to CD3 id "${id}". Rename one service before importing.`,
+      );
+      process.exit(1);
+    }
+    serviceIds.set(id, serviceName);
+  }
 
   commands.push({
     type: 'create-element',
@@ -135,6 +151,13 @@ async function main() {
   if (dry) {
     console.log(JSON.stringify({ commands }, null, 2));
     return;
+  }
+
+  if (commands.length > MAX_ATOMIC_COMMANDS) {
+    console.error(
+      `This stack needs ${String(commands.length)} commands, but CD3 accepts at most ${String(MAX_ATOMIC_COMMANDS)} in one atomic import. Reduce the stack or import it as smaller independent projects.`,
+    );
+    process.exit(1);
   }
 
   const revisionResponse = await fetch(`${API}/api/project/revision`);
