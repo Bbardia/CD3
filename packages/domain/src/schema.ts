@@ -345,6 +345,13 @@ export const ProjectSchema = ProjectStructureSchema.superRefine((project, contex
   const relationships: Record<string, z.infer<typeof RelationshipSchema>> = project.relationships;
   const views: Record<string, z.infer<typeof ViewSchema>> = project.views;
 
+  // The editor, command layer, and every renderer require an active view. Keep that invariant at
+  // the document boundary as well, so an API PUT or imported file can never validate successfully
+  // and then crash while the workspace chooses its initial view.
+  if (Object.keys(views).length === 0) {
+    addIssue(context, ['views'], 'A project needs at least one view.');
+  }
+
   validateRecordKeys(context, 'elements', elements);
   validateRecordKeys(context, 'relationships', relationships);
   validateRecordKeys(context, 'views', views);

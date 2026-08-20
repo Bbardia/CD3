@@ -213,6 +213,14 @@ describe('ProjectSchema', () => {
     expect(issuesFor(bookmark)).toContain('Camera bookmark view');
   });
 
+  it('requires at least one view because every editor session needs an active view', () => {
+    const input = createValidProject();
+    input.views = {};
+    input.threeD.bookmarks = {};
+
+    expect(issuesFor(input)).toContain('A project needs at least one view');
+  });
+
   it('never treats inherited Object prototype keys as record members', () => {
     const relationship = createValidProject();
     relationship.relationships['shopper-uses-commerce']!.targetId = 'constructor';

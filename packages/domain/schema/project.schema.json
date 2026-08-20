@@ -899,7 +899,8 @@
           "type"
         ],
         "additionalProperties": false
-      }
+      },
+      "minProperties": 1
     }
   },
   "required": [
