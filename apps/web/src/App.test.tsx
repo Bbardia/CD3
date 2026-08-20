@@ -180,6 +180,22 @@ describe.sequential('CD3 workspace shell', () => {
     expect(screen.getByRole('navigation', { name: 'Model explorer' })).toBeVisible();
   });
 
+  it('stretches a side panel from its resize handle and resets it on double-click', () => {
+    const { container } = renderApp();
+    const shell = container.querySelector('.app-shell');
+    const handle = screen.getByRole('separator', { name: 'Resize the explorer' });
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+
+    expect(handle).toHaveAttribute('aria-valuenow', '288');
+    expect(shell).toHaveStyle({ '--explorer-width': '288px' });
+
+    fireEvent.doubleClick(handle);
+
+    expect(handle).toHaveAttribute('aria-valuenow', '272');
+    expect(shell).not.toHaveStyle({ '--explorer-width': '288px' });
+  });
+
   it('renders an accessible application shell with mode, view, and history controls', () => {
     renderApp();
 

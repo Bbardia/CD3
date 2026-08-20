@@ -16,7 +16,7 @@ import type { ViewAnnotation, ViewItemMove } from '@cd3/domain';
 import type { ProjectedView3D, ViewNode3D } from '@cd3/layout';
 
 import { PALETTE_MIME } from '../editor/palette';
-import { movesCollide } from '../editor/placement';
+import { centerSnap, movesCollide, type SnapGuide } from '../editor/placement';
 import { SpatialModel } from './spatial-models';
 
 export interface SpatialDiagramProps {
@@ -409,6 +409,11 @@ function CameraRig({
   readonly revealSignal: number;
 }) {
   const { camera, invalidate, size } = useThree();
+  // The default controls, once OrbitControls mounts; typed structurally to stay renderer-neutral.
+  const controls = useThree((state) => state.controls) as {
+    target: { set: (x: number, y: number, z: number) => void };
+    update: () => void;
+  } | null;
   // Framing is per view, not per placement: an edit must not throw away the camera the user set.
   const latestNodes = useRef(nodes);
   latestNodes.current = nodes;
@@ -440,8 +445,13 @@ function CameraRig({
     camera.near = 0.1;
     camera.far = distance * 8 + 100;
     camera.updateProjectionMatrix();
+    // The orbit pivot moves only when the view is framed, so a drop never re-aims the camera.
+    if (controls !== null) {
+      controls.target.set(centerX, 0, centerZ);
+      controls.update();
+    }
     invalidate();
-  }, [camera, invalidate, revealSignal, size.height, size.width, viewId]);
+  }, [camera, controls, invalidate, revealSignal, size.height, size.width, viewId]);
 
   return null;
 }
@@ -577,7 +587,10 @@ function SpatialScene({
   // nowhere else, so no domain command, validation, or projection runs until the gesture ends.
   const [drag, setDrag] = useState<{
     readonly itemIds: readonly string[];
+    /** The block the pointer grabbed: the one whose centre snaps; a group keeps its spacing. */
+    readonly anchorItemId: string;
     readonly offset: GroundOffset;
+    readonly guides: readonly SnapGuide[];
   } | null>(null);
   const dragOrigin = useRef<GroundOffset | null>(null);
   const [animateFlow] = useState(() => !prefersReducedMotion());
@@ -590,22 +603,46 @@ function SpatialScene({
             .map((candidate) => candidate.viewItemId)
         : [node.viewItemId];
       dragOrigin.current = point;
-      setDrag({ itemIds: together, offset: NO_OFFSET });
+      setDrag({ itemIds: together, anchorItemId: node.viewItemId, offset: NO_OFFSET, guides: [] });
     },
     [projection.nodes, selectedElementIds],
   );
 
-  const handleDragMove = useCallback((point: GroundOffset) => {
-    const origin = dragOrigin.current;
-    if (origin === null) {
-      return;
-    }
-    setDrag((current) =>
-      current === null
-        ? null
-        : { ...current, offset: [point[0] - origin[0], point[1] - origin[1]] },
-    );
-  }, []);
+  const handleDragMove = useCallback(
+    (point: GroundOffset) => {
+      const origin = dragOrigin.current;
+      if (origin === null) {
+        return;
+      }
+      const scale = projection.policy.coordinateScale;
+      setDrag((current) => {
+        if (current === null) {
+          return null;
+        }
+        const raw: GroundOffset = [point[0] - origin[0], point[1] - origin[1]];
+        const anchor = projection.nodes.find(
+          (node) => node.viewItemId === current.anchorItemId,
+        )?.placement2D;
+        if (anchor === undefined) {
+          return { ...current, offset: raw, guides: [] };
+        }
+        const moving = new Set(current.itemIds);
+        // Snapping runs in shared placement space, exactly like the 2D canvas.
+        const snap = centerSnap(
+          { ...anchor, x: anchor.x + raw[0] / scale, y: anchor.y + raw[1] / scale },
+          projection.nodes
+            .filter((node) => !moving.has(node.viewItemId))
+            .map((node) => node.placement2D),
+        );
+        return {
+          ...current,
+          offset: [raw[0] + snap.dx * scale, raw[1] + snap.dy * scale],
+          guides: snap.guides,
+        };
+      });
+    },
+    [projection.nodes, projection.policy.coordinateScale],
+  );
 
   const placedItems = useMemo(
     () =>
@@ -641,15 +678,18 @@ function SpatialScene({
     [drag],
   );
 
+  // Anchors the ground grid and double-click plane under the content; the camera no longer
+  // follows it, so an edit never re-aims the view. Rounded to whole cells: the grid pattern
+  // repeats every unit, so whole-cell moves are invisible while fractional ones would slide.
   const center = useMemo<[number, number, number]>(() => {
     if (projection.nodes.length === 0) {
       return [0, 0, 0];
     }
     const centers = projection.nodes.map(centerOf);
     return [
-      centers.reduce((sum, position) => sum + position[0], 0) / centers.length,
+      Math.round(centers.reduce((sum, position) => sum + position[0], 0) / centers.length),
       0,
-      centers.reduce((sum, position) => sum + position[2], 0) / centers.length,
+      Math.round(centers.reduce((sum, position) => sum + position[2], 0) / centers.length),
     ];
   }, [projection.nodes]);
 
@@ -699,7 +739,8 @@ function SpatialScene({
     const spanZ =
       Math.max(...projection.nodes.map((node) => node.position[2] + node.size[2])) -
       Math.min(...projection.nodes.map((node) => node.position[2]));
-    return Math.ceil(Math.max(spanX, spanZ) * 1.6) + 4;
+    // Kept even so the 1-unit grid lines stay on the same world lattice as the size grows.
+    return Math.ceil((Math.max(spanX, spanZ) * 1.6 + 4) / 2) * 2;
   }, [projection.nodes]);
 
   return (
@@ -763,6 +804,31 @@ function SpatialScene({
           position={[center[0], -0.01, center[2]]}
         />
       ) : null}
+      {drag?.guides.map((guide) => {
+        const scale = projection.policy.coordinateScale;
+        // Placement x maps to world x and placement y to world z, just above the ground plane.
+        const points: [number, number, number][] =
+          guide.axis === 'x'
+            ? [
+                [guide.position * scale, 0.07, guide.start * scale],
+                [guide.position * scale, 0.07, guide.end * scale],
+              ]
+            : [
+                [guide.start * scale, 0.07, guide.position * scale],
+                [guide.end * scale, 0.07, guide.position * scale],
+              ];
+        return (
+          <Line
+            key={guide.axis}
+            points={points}
+            color="#d13438"
+            lineWidth={1.6}
+            dashed
+            dashSize={0.28}
+            gapSize={0.16}
+          />
+        );
+      })}
       <hemisphereLight args={['#ffffff', '#dce3df', 1.65]} />
       <directionalLight position={[-18, 28, 20]} intensity={2.1} />
       <directionalLight position={[18, 12, -16]} intensity={0.55} />
@@ -856,7 +922,6 @@ function SpatialScene({
       <OrbitControls
         makeDefault
         enabled={drag === null}
-        target={center}
         enableDamping
         dampingFactor={0.12}
         minPolarAngle={0.45}

@@ -1,4 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import type {
   DeepReadonly,
   Element,
@@ -24,6 +33,7 @@ import { isTextEntryTarget } from './editor/keyboard';
 import { downloadDataUrl, fileStem } from './editor/project-file';
 import { embedProjectInPng } from './editor/png-project';
 import { ICON_LABELS, spatialModelKeys } from './components/spatial-icon';
+import { PaletteGlyph } from './components/PaletteGlyph';
 import { useAutosave, type SaveStatus } from './editor/useAutosave';
 import { useRemoteSync } from './editor/useRemoteSync';
 import { stashConflictProject, type ProjectSource } from './editor/persistence';
@@ -374,7 +384,7 @@ function StageAddMenu({
         {paletteEntries.map((entry) => (
           <li key={entry.id}>
             <button type="button" role="menuitem" onClick={() => onPick(entry.id)}>
-              <span className={`palette-glyph palette-glyph--${entry.id}`} aria-hidden="true" />
+              <PaletteGlyph id={entry.id} />
               {entry.label}
             </button>
           </li>
@@ -820,6 +830,59 @@ function Inspector({
   );
 }
 
+const PANEL_LIMITS = {
+  explorer: { min: 200, max: 520, fallback: 272 },
+  inspector: { min: 240, max: 560, fallback: 320 },
+} as const;
+
+/**
+ * Draggable edge of a side panel. Drag stretches the panel, arrow keys nudge it, and a
+ * double-click returns it to the stylesheet default (which keeps the responsive breakpoints).
+ */
+function PanelResizer({
+  side,
+  width,
+  onResize,
+}: {
+  readonly side: 'explorer' | 'inspector';
+  readonly width: number | undefined;
+  readonly onResize: (width: number | undefined) => void;
+}) {
+  const { min, max, fallback } = PANEL_LIMITS[side];
+  const clamp = (value: number) => Math.min(max, Math.max(min, value));
+  return (
+    <div
+      className={`panel-resize panel-resize--${side}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={side === 'explorer' ? 'Resize the explorer' : 'Resize the inspector'}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={width ?? fallback}
+      tabIndex={0}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+          return;
+        }
+        onResize(clamp(side === 'explorer' ? event.clientX : window.innerWidth - event.clientX));
+      }}
+      onDoubleClick={() => onResize(undefined)}
+      onKeyDown={(event) => {
+        const grow = side === 'explorer' ? 'ArrowRight' : 'ArrowLeft';
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+          return;
+        }
+        event.preventDefault();
+        onResize(clamp((width ?? fallback) + (event.key === grow ? 16 : -16)));
+      }}
+    />
+  );
+}
+
 export function App({
   initialProjectSource = 'disk',
 }: {
@@ -849,6 +912,9 @@ export function App({
   const [freshViewId, setFreshViewId] = useState<string | undefined>(undefined);
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  // undefined = the stylesheet default, so the responsive breakpoints stay in charge until a drag.
+  const [explorerWidth, setExplorerWidth] = useState<number | undefined>(undefined);
+  const [inspectorWidth, setInspectorWidth] = useState<number | undefined>(undefined);
   const [editingEdge, setEditingEdge] = useState<
     { readonly relationshipId: string; readonly x: number; readonly y: number } | undefined
   >(undefined);
@@ -1323,6 +1389,16 @@ export function App({
       className={`app-shell${explorerOpen ? '' : ' app-shell--no-explorer'}${
         inspectorOpen ? '' : ' app-shell--no-inspector'
       }`}
+      style={
+        {
+          ...(explorerWidth === undefined
+            ? {}
+            : { '--explorer-width': `${String(explorerWidth)}px` }),
+          ...(inspectorWidth === undefined
+            ? {}
+            : { '--inspector-width': `${String(inspectorWidth)}px` }),
+        } as CSSProperties
+      }
     >
       <header className="global-header">
         <div className="brand-lockup">
@@ -1357,6 +1433,9 @@ export function App({
           onDeleteView={deleteView}
           onHide={() => setExplorerOpen(false)}
         />
+      ) : null}
+      {explorerOpen ? (
+        <PanelResizer side="explorer" width={explorerWidth} onResize={setExplorerWidth} />
       ) : null}
 
       <main className="stage">
@@ -1561,6 +1640,9 @@ export function App({
           onRemoveFromView={removeElementFromView}
           onHide={() => setInspectorOpen(false)}
         />
+      ) : null}
+      {inspectorOpen ? (
+        <PanelResizer side="inspector" width={inspectorWidth} onResize={setInspectorWidth} />
       ) : null}
 
       <footer

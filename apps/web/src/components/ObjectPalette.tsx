@@ -1,5 +1,7 @@
 import { PALETTE_MIME, paletteEntries } from '../editor/palette';
 
+import { PaletteGlyph } from './PaletteGlyph';
+
 /**
  * Catalogue of the objects a view can hold. A click authors one immediately; a drag places it
  * exactly where it lands on either stage. Click is also what makes the palette keyboard-usable.
@@ -23,7 +25,7 @@ export function ObjectPalette({ onAdd }: { readonly onAdd: (entryId: string) => 
                 event.dataTransfer.effectAllowed = 'copy';
               }}
             >
-              <span className={`palette-glyph palette-glyph--${entry.id}`} aria-hidden="true" />
+              <PaletteGlyph id={entry.id} />
               <span>{entry.label}</span>
             </button>
           </li>

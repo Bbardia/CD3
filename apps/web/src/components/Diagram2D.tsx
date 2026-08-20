@@ -11,6 +11,7 @@ import {
   type NodeChange,
   type NodeTypes,
   type ReactFlowInstance,
+  ViewportPortal,
 } from '@xyflow/react';
 import type { ViewAnnotation, ViewItemMove } from '@cd3/domain';
 import type { ProjectedView2D } from '@cd3/layout';
@@ -18,7 +19,7 @@ import type { ProjectedView2D } from '@cd3/layout';
 import { PALETTE_MIME } from '../editor/palette';
 import { modelKeyFor } from './spatial-icon';
 import { AnnotationNode, type AnnotationFlowNode } from './AnnotationNode';
-import { movesCollide } from '../editor/placement';
+import { centerSnap, movesCollide, type SnapGuide } from '../editor/placement';
 import { DatumNode, type DatumFlowNode } from './DatumNode';
 
 export interface Diagram2DProps {
@@ -184,9 +185,63 @@ export function Diagram2D({
     }
   }, [flow, revealSignal]);
 
-  const handleNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
-    setNodes((current) => applyNodeChanges(changes, current));
-  }, []);
+  // Centre lines shared with nearby blocks while a drag holds a snap; empty otherwise.
+  const [guides, setGuides] = useState<readonly SnapGuide[]>([]);
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<CanvasNode>[]) => {
+      const moving = changes.filter(
+        (change) => change.type === 'position' && change.dragging === true,
+      ) as { id: string; position?: { x: number; y: number } }[];
+      // The first dragged element is the snap anchor; the rest of a group keeps its spacing.
+      const anchorChange = moving.find(
+        (change) =>
+          change.position !== undefined &&
+          nodes.find((node) => node.id === change.id)?.type === 'datum',
+      );
+      let adjusted = changes;
+      if (anchorChange?.position !== undefined) {
+        const anchor = nodes.find((node) => node.id === anchorChange.id);
+        const movingIds = new Set(moving.map((change) => change.id));
+        const stationary = nodes
+          .filter((node) => node.type === 'datum' && !movingIds.has(node.id))
+          .map((node) => ({
+            x: node.position.x,
+            y: node.position.y,
+            width: node.width ?? 0,
+            height: node.height ?? 0,
+          }));
+        const snap = centerSnap(
+          {
+            x: anchorChange.position.x,
+            y: anchorChange.position.y,
+            width: anchor?.width ?? 0,
+            height: anchor?.height ?? 0,
+          },
+          stationary,
+        );
+        if (snap.dx !== 0 || snap.dy !== 0) {
+          adjusted = changes.map((change) =>
+            change.type === 'position' && change.dragging === true && change.position !== undefined
+              ? {
+                  ...change,
+                  position: {
+                    x: change.position.x + snap.dx,
+                    y: change.position.y + snap.dy,
+                  },
+                }
+              : change,
+          );
+        }
+        setGuides(snap.guides);
+      } else {
+        // No block is being dragged (drag ended, selection changed, …): drop any stale guides.
+        setGuides((current) => (current.length === 0 ? current : []));
+      }
+      setNodes((current) => applyNodeChanges(adjusted, current));
+    },
+    [nodes],
+  );
 
   const placedItems = useMemo(
     () =>
@@ -375,6 +430,29 @@ export function Diagram2D({
           />
         ) : null}
         <Controls position="bottom-right" showInteractive={false} />
+        <ViewportPortal>
+          {guides.map((guide) => (
+            <div
+              key={guide.axis}
+              className="snap-guide"
+              style={
+                guide.axis === 'x'
+                  ? {
+                      left: guide.position,
+                      top: guide.start,
+                      height: guide.end - guide.start,
+                      borderLeft: '1.5px dashed #d13438',
+                    }
+                  : {
+                      top: guide.position,
+                      left: guide.start,
+                      width: guide.end - guide.start,
+                      borderTop: '1.5px dashed #d13438',
+                    }
+              }
+            />
+          ))}
+        </ViewportPortal>
       </ReactFlow>
     </section>
   );

@@ -82,7 +82,47 @@ button:focus-visible,
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  position: relative;
   background: var(--app-bg);
+}
+
+/* Panel resize handles ----------------------------------------------------- */
+
+.panel-resize {
+  position: absolute;
+  top: 52px;
+  bottom: 26px;
+  width: 9px;
+  z-index: 15;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel-resize--explorer {
+  left: calc(var(--explorer-width) - 4px);
+}
+
+.panel-resize--inspector {
+  right: calc(var(--inspector-width) - 4px);
+}
+
+/* The grab line doubles as the focus ring, so the outline can go. */
+.panel-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+}
+
+.panel-resize:hover::after,
+.panel-resize:focus-visible::after {
+  background: var(--primary);
+}
+
+.panel-resize:focus-visible {
+  outline: none;
 }
 
 .global-header {
@@ -1239,7 +1279,8 @@ details:not([open]).inspector-section > .inspector-section__summary {
       'status status';
   }
 
-  .inspector {
+  .inspector,
+  .panel-resize--inspector {
     display: none;
   }
 }
@@ -1249,7 +1290,8 @@ details:not([open]).inspector-section > .inspector-section__summary {
 .palette-grid {
   display: grid;
   gap: 5px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Reflows to more columns when the explorer is stretched. */
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   list-style: none;
 }
 
@@ -1284,10 +1326,14 @@ details:not([open]).inspector-section > .inspector-section__summary {
 }
 
 .palette-glyph {
-  width: 12px;
-  height: 12px;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
   flex: none;
-  border-radius: 3px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: #fff;
 }
 
 .palette-glyph--browser {
@@ -1295,6 +1341,7 @@ details:not([open]).inspector-section > .inspector-section__summary {
 }
 .palette-glyph--cloud {
   background: #a3c4ea;
+  color: #2c4a63;
 }
 .palette-glyph--component {
   background: #6a4fd0;
@@ -1729,6 +1776,13 @@ details:not([open]).inspector-section > .inspector-section__summary {
 }
 .palette-glyph--storage {
   background: #9a6b42;
+}
+
+/* Red centre line shown while a dragged block holds a snap to a neighbour's centre. */
+.snap-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .datum-node__glyph {

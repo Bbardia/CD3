@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 
 import { paletteEntries } from '../editor/palette';
 
+import { PaletteGlyph } from './PaletteGlyph';
+
 /**
  * Add and delete without leaving the canvas. The add menu is a native disclosure, so it opens,
  * closes on Escape, and reaches the keyboard without any state of its own.
@@ -56,7 +58,7 @@ export function StageQuickBar({
                     }
                   }}
                 >
-                  <span className={`palette-glyph palette-glyph--${entry.id}`} aria-hidden="true" />
+                  <PaletteGlyph id={entry.id} />
                   {entry.label}
                 </button>
               </li>
