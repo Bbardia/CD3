@@ -26,7 +26,7 @@ import { embedProjectInPng } from './editor/png-project';
 import { ICON_LABELS, spatialModelKeys } from './components/spatial-icon';
 import { useAutosave, type SaveStatus } from './editor/useAutosave';
 import { useRemoteSync } from './editor/useRemoteSync';
-import { stashConflictProject } from './editor/persistence';
+import { stashConflictProject, type ProjectSource } from './editor/persistence';
 import {
   DEFAULT_PLACEMENT_SIZE,
   elementFromPalette,
@@ -820,7 +820,11 @@ function Inspector({
   );
 }
 
-export function App() {
+export function App({
+  initialProjectSource = 'disk',
+}: {
+  readonly initialProjectSource?: ProjectSource;
+}) {
   const project = useEditorStore((state) => state.history.project);
   const viewId = useEditorStore((state) => state.activeViewId);
   const mode = useEditorStore((state) => state.mode);
@@ -1266,7 +1270,7 @@ export function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
   const adoptedProjectRef = useRef<ReadonlyProject | null>(null);
-  const saveStatus = useAutosave(project, adoptedProjectRef);
+  const saveStatus = useAutosave(project, adoptedProjectRef, initialProjectSource);
   const saveStatusRef = useRef<SaveStatus>(saveStatus);
   saveStatusRef.current = saveStatus;
   const adoptExternalProject = useCallback(
@@ -1281,7 +1285,12 @@ export function App() {
     },
     [replaceProject, storeApi],
   );
-  const canAdoptExternal = useCallback(() => saveStatusRef.current !== 'saving', []);
+  const canAdoptExternal = useCallback(() => {
+    const current = saveStatusRef.current;
+    // A browser-only or failed save is the sole durable copy and must never yield to disk. A
+    // confirmed conflict may yield because adoptExternalProject stashes it first.
+    return current === 'idle' || current === 'saved-disk' || current === 'conflict';
+  }, []);
   useRemoteSync(adoptExternalProject, canAdoptExternal);
   const exportPng = useCallback(() => {
     const surface = stageRef.current?.querySelector('.diagram-surface');

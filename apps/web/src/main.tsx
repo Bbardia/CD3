@@ -23,7 +23,7 @@ void loadProject(project).then((loaded) => {
         initialProject={loaded.project}
         initialActiveViewId={viewIds[1] ?? viewIds[0] ?? ''}
       >
-        <App />
+        <App initialProjectSource={loaded.source} />
       </EditorStoreProvider>
     </StrictMode>,
   );

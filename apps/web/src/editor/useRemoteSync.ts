@@ -1,14 +1,20 @@
 import { useEffect } from 'react';
 import type { ReadonlyProject } from '@cd3/domain';
 
-import { fetchRemoteRevision, readRemoteProject, remoteRevision } from './persistence';
+import {
+  adoptRemoteRevision,
+  fetchRemoteRevision,
+  readRemoteProject,
+  remoteRevision,
+} from './persistence';
 
 const POLL_INTERVAL_MS = 3000;
 
 /**
  * Adopts changes made to the disk snapshot outside this tab — a terminal script, another window —
- * by polling the revision and reloading the project when it moves. Reads through
- * readRemoteProject, which records the adopted revision, so a change is adopted exactly once.
+ * by polling the revision and reloading the project when it moves. The revision advances only
+ * after the final adoption check and callback, so an edit that begins during the read cannot be
+ * based on an external project the editor never adopted.
  */
 export function useRemoteSync(
   onExternalProject: (project: ReadonlyProject) => void,
@@ -25,12 +31,15 @@ export function useRemoteSync(
       inFlight = true;
       void fetchRemoteRevision()
         .then(async (revision) => {
-          if (revision === undefined || revision === remoteRevision() || !canAdopt()) {
+          if (revision.status !== 'found' || revision.value === remoteRevision() || !canAdopt()) {
             return;
           }
-          const project = await readRemoteProject();
-          if (project !== undefined && canAdopt()) {
-            onExternalProject(project);
+          const remote = await readRemoteProject();
+          if (remote.status === 'found' && canAdopt()) {
+            // The callback stashes a conflicted local copy before replacement; cache only after it
+            // runs, otherwise the browser recovery record would be overwritten too early.
+            onExternalProject(remote.value.project);
+            adoptRemoteRevision(remote.value.revision);
           }
         })
         .finally(() => {

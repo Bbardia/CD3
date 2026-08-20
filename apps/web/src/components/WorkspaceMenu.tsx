@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReadonlyProject } from '@cd3/domain';
 
-import { forgetProject, listRemoteVersions, readRemoteVersion } from '../editor/persistence';
+import {
+  forgetProject,
+  listRemoteVersions,
+  readConflictProject,
+  readRemoteVersion,
+} from '../editor/persistence';
 import { extractProjectFromPng } from '../editor/png-project';
 import { downloadProjectFile, parseProjectFile } from '../editor/project-file';
 import type { SaveStatus } from '../editor/useAutosave';
@@ -33,7 +38,9 @@ export function WorkspaceMenu({
   const menu = useRef<HTMLDetailsElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const [versions, setVersions] = useState<readonly string[] | undefined>(undefined);
+  const [resetting, setResetting] = useState(false);
   const copy = STATUS_COPY[status];
+  const conflictProject = readConflictProject();
 
   useEffect(() => {
     const closeOnOutside = (event: MouseEvent) => {
@@ -117,6 +124,20 @@ export function WorkspaceMenu({
               Download project (JSON)
             </button>
           </li>
+          {conflictProject === undefined ? null : (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  downloadProjectFile(conflictProject);
+                }}
+              >
+                Download recovery copy (JSON)
+              </button>
+              <p className="menu-note">Preserved after a save conflict.</p>
+            </li>
+          )}
           <li>
             <button
               type="button"
@@ -170,19 +191,29 @@ export function WorkspaceMenu({
           <li>
             <button
               type="button"
-              onClick={() => {
+              disabled={resetting}
+              onClick={async () => {
                 if (
                   window.confirm(
                     'Discard this workspace and reopen the Northstar Commerce sample? Saved copies are deleted.',
                   )
                 ) {
-                  void forgetProject().then(() => {
+                  setResetting(true);
+                  const outcome = await forgetProject();
+                  if (outcome === 'forgotten') {
                     window.location.reload();
-                  });
+                    return;
+                  }
+                  setResetting(false);
+                  window.alert(
+                    outcome === 'disk-failed'
+                      ? 'Reset failed because the disk copy could not be deleted. Your browser copy was kept.'
+                      : 'The disk copy was deleted, but browser storage could not be cleared. Close the app and try again.',
+                  );
                 }
               }}
             >
-              Reset to sample project
+              {resetting ? 'Resetting…' : 'Reset to sample project'}
             </button>
           </li>
         </ul>
