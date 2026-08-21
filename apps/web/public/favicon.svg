@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CD3">
+  <title>CD3</title>
+  <!-- Three isometric slabs — context, container, component: the C4 levels CD3 edits, stacked the
+       way its 3D view stacks them, in the app's own semantic palette. -->
+  <rect width="64" height="64" rx="14" fill="#182126" />
+  <!-- context -->
+  <polygon points="12,38 32,48 32,54 12,44" fill="#1c3a80" />
+  <polygon points="52,38 32,48 32,54 52,44" fill="#2b52a8" />
+  <polygon points="32,28 52,38 32,48 12,38" fill="#3d6fe0" />
+  <!-- container -->
+  <polygon points="17.5,25 32,32.25 32,37.25 17.5,30" fill="#0a5f57" />
+  <polygon points="46.5,25 32,32.25 32,37.25 46.5,30" fill="#0f8378" />
+  <polygon points="32,17.75 46.5,25 32,32.25 17.5,25" fill="#17b3a3" />
+  <!-- component -->
+  <polygon points="22.5,14 32,18.75 32,22.75 22.5,18" fill="#4c3f86" />
+  <polygon points="41.5,14 32,18.75 32,22.75 41.5,18" fill="#6f5eb5" />
+  <polygon points="32,9.25 41.5,14 32,18.75 22.5,14" fill="#9b8ae0" />
+</svg>

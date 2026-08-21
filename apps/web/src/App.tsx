@@ -1449,6 +1449,7 @@ export function App({
     >
       <header className="global-header">
         <div className="brand-lockup">
+          <img className="brand-glyph" src="/favicon.svg" alt="" width={22} height={22} />
           <span className="brand-mark" aria-hidden="true">
             C<span>D</span>3
           </span>

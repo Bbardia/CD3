@@ -151,6 +151,11 @@ button:focus-visible,
   gap: 12px;
 }
 
+.brand-glyph {
+  display: block;
+  border-radius: 6px;
+}
+
 .brand-mark {
   display: inline-flex;
   align-items: baseline;

@@ -8,6 +8,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dist": "pnpm build && electron-builder --mac --config electron-builder.yml",
+    "icon": "electron scripts/render-icon.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
