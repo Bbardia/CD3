@@ -43,9 +43,22 @@ let knownRemoteRevision: string | undefined;
 let localChangeSequence = 0;
 let persistencePaused = false;
 let remoteSaveTail: Promise<void> = Promise.resolve();
+/**
+ * An opaque per-tab id. `crypto.randomUUID` exists only in a secure context, and a CD3 instance
+ * published over plain HTTP on a LAN is not one — `getRandomValues` is, so it carries the fallback.
+ */
+export function newSessionId(): string {
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return [...crypto.getRandomValues(new Uint8Array(16))]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 // localStorage is shared by tabs. This id prevents one tab from advancing another tab's dirty
 // snapshot to a revision it was not based on when their saves overlap.
-const persistenceSessionId = crypto.randomUUID();
+const persistenceSessionId = newSessionId();
 
 export function remoteRevision(): string | undefined {
   return knownRemoteRevision;

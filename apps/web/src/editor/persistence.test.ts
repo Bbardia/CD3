@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   forgetProject,
   loadProject,
+  newSessionId,
   readConflictProject,
   readLocalProject,
   readRemoteProject,
@@ -407,5 +408,20 @@ describe.sequential('project persistence', () => {
 
     expect(writeLocalProject({ ...project, name: 'Edit after failed reset' })).toBe(true);
     expect(readLocalProject()?.name).toBe('Edit after failed reset');
+  });
+
+  it('still produces a tab id where randomUUID is missing, as on a plain-HTTP LAN address', () => {
+    const secure = newSessionId();
+    // Outside a secure context randomUUID is absent entirely; getRandomValues still is not.
+    const realGetRandomValues = crypto.getRandomValues.bind(crypto);
+    vi.stubGlobal('crypto', { getRandomValues: realGetRandomValues } as unknown as Crypto);
+
+    const first = newSessionId();
+    const second = newSessionId();
+
+    expect(secure).not.toBe('');
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+    vi.unstubAllGlobals();
   });
 });
