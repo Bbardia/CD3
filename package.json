@@ -17,6 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dist:mac": "pnpm build && pnpm --filter @cd3/desktop dist",
+    "dist:linux": "pnpm build && pnpm --filter @cd3/desktop dist:linux",
     "generate:schema": "pnpm --filter @cd3/domain generate:schema",
     "lint": "eslint . --max-warnings 0",
     "smoke:production": "node scripts/smoke-production.mjs",

@@ -13,8 +13,22 @@ mac:
     - target: dmg
       arch: [arm64]
   category: public.app-category.developer-tools
+  icon: build/icon.png
   # Unsigned local build: open with right-click → Open the first time.
   identity: null
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  # Without this the binary and the .desktop entry inherit the scoped package name.
+  executableName: cd3
+  icon: build/icon.png
+  # Debian packages require a maintainer; the project's GitHub address stands in for a person.
+  maintainer: CD3 maintainers <Bbardia@users.noreply.github.com>
+  desktop:
+    entry:
+      Comment: Local-first C4 architecture editor with synchronized 2D and 3D views
 # Chromium locale packs are ~1MB each; the UI is English-only.
 electronLanguages: [en]
 npmRebuild: false

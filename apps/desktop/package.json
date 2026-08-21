@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "productName": "CD3",
-  "description": "Double-clickable Mac shell around the CD3 loopback application.",
+  "description": "Double-clickable desktop shell around the CD3 local server.",
+  "author": "CD3 maintainers <Bbardia@users.noreply.github.com>",
   "main": "dist/main.cjs",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dist": "pnpm build && electron-builder --mac --config electron-builder.yml",
+    "dist:linux": "pnpm build && electron-builder --linux --config electron-builder.yml",
     "icon": "electron scripts/render-icon.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
