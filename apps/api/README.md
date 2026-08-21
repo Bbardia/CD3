@@ -5,8 +5,22 @@ machine (a terminal, CI, editor tooling) can read the project and apply the same
 commands the UI executes.
 
 Base URL: `http://127.0.0.1:3100` with `pnpm dev` or `pnpm start` (`PORT` in `apps/api/.env`
-overrides, see `.env.example`). The packaged Mac app runs its own copy on dedicated loopback port
-`43173`, which stops with the app. Only one packaged app instance runs at a time.
+overrides, see `.env.example`). The packaged desktop app runs its own copy on dedicated loopback
+port `43173`, which stops with the app. Only one packaged app instance runs at a time.
+
+| Variable            | Effect                                                               |
+| ------------------- | -------------------------------------------------------------------- |
+| `PORT`              | Listening port (default `3100`)                                      |
+| `CD3_DATA_DIR`      | Where the snapshot and its history live (default `apps/api/data/`)   |
+| `CD3_PUBLIC_ORIGIN` | Addresses to answer to besides loopback — also binds beyond loopback |
+| `CD3_WEB_DIST`      | Built web app to serve; `pnpm start` points it at `apps/web/dist`    |
+
+Without `CD3_PUBLIC_ORIGIN` the server binds `127.0.0.1` and rejects any request whose `Host` is not
+a literal loopback authority, which is what stops a DNS-rebinding page from reaching it. Set it to
+the address people type (`http://cd3.lan:3100`, comma-separated for several, `*` for any) to publish
+the instance on `0.0.0.0`. Mutations must still be same-origin with the `Host` they were sent to, so
+only the scheme may differ behind a TLS proxy. A published instance is unauthenticated: everyone who
+reaches it shares one project.
 
 ## Endpoints
 

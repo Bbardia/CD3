@@ -195,10 +195,47 @@ function isLoopbackAuthority(value: string | undefined): boolean {
   return port === undefined || (Number(port) >= 1 && Number(port) <= 65_535);
 }
 
-function isLoopbackOrigin(value: string): boolean {
-  const match = /^https?:\/\/(.+)$/i.exec(value);
-  return match !== null && isLoopbackAuthority(match[1]);
+/** The host:port part of an origin, or of a bare authority written without a scheme. */
+function authorityOf(value: string): string {
+  return (/^https?:\/\/(.+)$/i.exec(value)?.[1] ?? value).replace(/\/+$/, '').toLowerCase();
 }
+
+/**
+ * Extra authorities this instance answers to, from CD3_PUBLIC_ORIGIN — the address people type in
+ * their browser when CD3 is hosted on a shared machine. Comma-separated for several names, or `*`
+ * when the address is not known ahead of time. Unset means loopback only.
+ */
+export function publicAuthorities(): 'any' | readonly string[] {
+  const raw = process.env['CD3_PUBLIC_ORIGIN'];
+  if (raw === undefined || raw.trim() === '') {
+    return [];
+  }
+  const entries = raw
+    .split(',')
+    .map((entry) => authorityOf(entry.trim()))
+    .filter((entry) => entry !== '');
+  return entries.includes('*') ? 'any' : entries;
+}
+
+/**
+ * Everything the app needs is served from this origin: its own bundle, its own worker, its own
+ * font. `data:`/`blob:` images cover the PNG export round-trip, and inline styles are how React,
+ * React Flow and drei position their nodes. A header, not a meta tag, so it also states
+ * frame-ancestors — and so the dev server's inline HMR preamble is left alone.
+ */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
 
 const MUTATING_METHODS = new Set(['DELETE', 'PATCH', 'POST', 'PUT']);
 
@@ -211,18 +248,28 @@ export function buildServer(): FastifyInstance {
   });
 
   // Binding to 127.0.0.1 alone does not stop DNS rebinding: an attacker-controlled hostname can
-  // resolve to loopback and become same-origin with this API. Require a literal loopback Host, and
-  // reject browser mutations whose Origin is not loopback while leaving origin-less CLI use intact.
+  // resolve to loopback and become same-origin with this API. Answer only to loopback and to the
+  // authorities the operator published, and reject browser mutations that are not same-origin with
+  // the address they were sent to — which holds behind a TLS proxy, where only the scheme differs.
+  const allowed = publicAuthorities();
+  const hostIsAllowed = (host: string | undefined): boolean =>
+    isLoopbackAuthority(host) ||
+    allowed === 'any' ||
+    (host !== undefined && allowed.includes(host.toLowerCase()));
+
   server.addHook('onRequest', async (request, reply) => {
-    if (!isLoopbackAuthority(request.headers.host)) {
-      return reply.code(403).send({ error: 'CD3 accepts requests only on a loopback hostname.' });
+    if (!hostIsAllowed(request.headers.host)) {
+      return reply
+        .code(403)
+        .send({ error: 'CD3 does not answer to that hostname. See CD3_PUBLIC_ORIGIN.' });
     }
     const origin = request.headers.origin;
     if (
       request.url.startsWith('/api/') &&
       MUTATING_METHODS.has(request.method) &&
       origin !== undefined &&
-      !isLoopbackOrigin(origin)
+      authorityOf(origin) !== (request.headers.host ?? '').toLowerCase() &&
+      !(isLoopbackAuthority(authorityOf(origin)) && isLoopbackAuthority(request.headers.host))
     ) {
       return reply.code(403).send({ error: 'Cross-origin API mutations are not allowed.' });
     }
@@ -232,6 +279,8 @@ export function buildServer(): FastifyInstance {
   // API read from a stale cache, and prevent MIME sniffing on both JSON and static responses.
   server.addHook('onSend', async (request, reply, payload) => {
     reply.header('x-content-type-options', 'nosniff');
+    reply.header('content-security-policy', CONTENT_SECURITY_POLICY);
+    reply.header('referrer-policy', 'no-referrer');
     if (request.url.startsWith('/api/')) {
       reply.header('cache-control', 'no-store');
     }
