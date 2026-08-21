@@ -34,6 +34,27 @@ describe('WorkspaceMenu persistence actions', () => {
     expect(screen.getByText('Preserved after a save conflict.')).toBeVisible();
   });
 
+  it('keeps the plain image export separate from the project-carrying one', async () => {
+    const user = userEvent.setup();
+    const onExportPng = vi.fn();
+    render(
+      <WorkspaceMenu
+        project={project}
+        status="idle"
+        onExportPng={onExportPng}
+        onReplaceProject={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Workspace menu'));
+    await user.click(screen.getByRole('button', { name: 'Export image (PNG)' }));
+    expect(onExportPng).toHaveBeenLastCalledWith(false);
+
+    await user.click(screen.getByLabelText('Workspace menu'));
+    await user.click(screen.getByRole('button', { name: 'Portable project PNG' }));
+    expect(onExportPng).toHaveBeenLastCalledWith(true);
+  });
+
   it('reports a failed reset and retains the browser project', async () => {
     const user = userEvent.setup();
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);

@@ -19,9 +19,9 @@ Pushing a `v*` tag builds and attaches the DMG in CI; `pnpm dist:mac` builds the
 Double-click empty canvas to add at the pointer (elements, regions, notes); double-click an element
 to drill into the view scoped to it. Click a relationship line to rename, retype, or delete it.
 `V`/`C` switch the Select and Connect tools; **Arrange** lays the view out via ELK as one undoable
-move. **Export image (PNG)** captures the active canvas and embeds the whole project in the image,
-so **Open project…** accepts the PNG back. Regions and notes are per-view decoration, never model
-elements.
+move. **Export image (PNG)** captures the active canvas and nothing else; **Portable project PNG**
+looks identical but hides the whole project inside the file, so **Open project…** accepts that PNG
+back. Regions and notes are per-view decoration, never model elements.
 
 Import a running stack — one system, a container per service (tagged by image so icons resolve),
 `depends_on` as relationships, and a ready-made view:

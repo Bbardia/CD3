@@ -32,7 +32,7 @@ export function WorkspaceMenu({
 }: {
   readonly project: ReadonlyProject;
   readonly status: SaveStatus;
-  readonly onExportPng: () => void;
+  readonly onExportPng: (embedProject: boolean) => void;
   readonly onReplaceProject: (project: ReadonlyProject) => void;
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
@@ -107,11 +107,26 @@ export function WorkspaceMenu({
               type="button"
               onClick={() => {
                 close();
-                onExportPng();
+                onExportPng(false);
               }}
             >
               Export image (PNG)
             </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                onExportPng(true);
+              }}
+            >
+              Portable project PNG
+            </button>
+            <p className="menu-note">
+              Looks the same but hides the whole project — every view, description and property —
+              inside the file. Share it only where the project itself may go.
+            </p>
           </li>
           <li>
             <button

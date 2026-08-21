@@ -1358,30 +1358,33 @@ export function App({
     return current === 'idle' || current === 'saved-disk' || current === 'conflict';
   }, []);
   useRemoteSync(adoptExternalProject, canAdoptExternal);
-  const exportPng = useCallback(() => {
-    const surface = stageRef.current?.querySelector('.diagram-surface');
-    if (!(surface instanceof HTMLElement)) {
-      return;
-    }
-    // The grid hides for the capture, and the exported PNG carries the whole project as an iTXt
-    // chunk — Open project… accepts the image back, so the picture is also the file.
-    setExporting(true);
-    void new Promise((settle) => setTimeout(settle, 150))
-      .then(() => import('html-to-image'))
-      .then(({ toPng }) => toPng(surface, { backgroundColor: '#f5f7f5', pixelRatio: 2 }))
-      .then((dataUrl) => {
-        const bytes = Uint8Array.from(atob(dataUrl.split(',')[1] ?? ''), (char) =>
-          char.charCodeAt(0),
-        );
-        const stamped = embedProjectInPng(bytes, JSON.stringify(project));
-        const blob = new Blob([stamped.slice().buffer], { type: 'image/png' });
-        const url = URL.createObjectURL(blob);
-        downloadDataUrl(`${fileStem(project.name)}.png`, url);
-        URL.revokeObjectURL(url);
-      })
-      .catch(() => window.alert('The image export failed.'))
-      .finally(() => setExporting(false));
-  }, [project]);
+  const exportPng = useCallback(
+    (embedProject: boolean) => {
+      const surface = stageRef.current?.querySelector('.diagram-surface');
+      if (!(surface instanceof HTMLElement)) {
+        return;
+      }
+      // The grid hides for the capture. A plain export is only the picture; the portable one also
+      // carries the whole project as an iTXt chunk, so Open project… accepts the image back.
+      setExporting(true);
+      void new Promise((settle) => setTimeout(settle, 150))
+        .then(() => import('html-to-image'))
+        .then(({ toPng }) => toPng(surface, { backgroundColor: '#f5f7f5', pixelRatio: 2 }))
+        .then((dataUrl) => {
+          const bytes = Uint8Array.from(atob(dataUrl.split(',')[1] ?? ''), (char) =>
+            char.charCodeAt(0),
+          );
+          const out = embedProject ? embedProjectInPng(bytes, JSON.stringify(project)) : bytes;
+          const blob = new Blob([out.slice().buffer], { type: 'image/png' });
+          const url = URL.createObjectURL(blob);
+          downloadDataUrl(`${fileStem(project.name)}${embedProject ? '.cd3' : ''}.png`, url);
+          URL.revokeObjectURL(url);
+        })
+        .catch(() => window.alert('The image export failed.'))
+        .finally(() => setExporting(false));
+    },
+    [project],
+  );
   const warningCount = workspaceView.compiled.warnings.length;
 
   return (
