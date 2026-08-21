@@ -1,5 +1,7 @@
 import { ProjectSchema, type ReadonlyProject } from '@cd3/domain';
 
+import { extractProjectFromPng } from './png-project';
+
 /** Lowercase, URL-safe file stem derived from the project name. */
 export function fileStem(name: string): string {
   const slug = name
@@ -36,3 +38,15 @@ export function parseProjectFile(text: string): ReadonlyProject | undefined {
     return undefined;
   }
 }
+
+/** A picked or dropped file becomes a project, whatever wrapper it arrived in. */
+export async function readProjectFile(file: File): Promise<ReadonlyProject | undefined> {
+  const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+  const text = isPng
+    ? (extractProjectFromPng(new Uint8Array(await file.arrayBuffer())) ?? '')
+    : await file.text();
+  return parseProjectFile(text);
+}
+
+export const NOT_A_PROJECT_FILE =
+  'That file is not a CD3 project — or the PNG was not exported by CD3.';

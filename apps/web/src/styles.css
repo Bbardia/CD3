@@ -2078,3 +2078,32 @@ details[open] > .tree-group__heading .tree-group__caret {
 .palette-glyph--docs {
   background: #7b8794;
 }
+
+/* Drop anywhere on the window to open a project; the veil is the only affordance the drag needs. */
+.drop-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--app-bg) 82%, transparent);
+  outline: 2px dashed var(--primary);
+  outline-offset: -14px;
+  pointer-events: none;
+}
+
+.drop-veil p {
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.drop-veil span {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  color: var(--muted);
+}

@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
 } from 'react';
 import type {
   DeepReadonly,
@@ -30,7 +31,12 @@ import { ElementInspectorForm } from './components/ElementInspectorForm';
 import type { CommandErrorData } from './editor/editor-store';
 import { useEditorStore, useEditorStoreApi } from './editor/EditorStoreProvider';
 import { isTextEntryTarget } from './editor/keyboard';
-import { downloadDataUrl, fileStem } from './editor/project-file';
+import {
+  downloadDataUrl,
+  fileStem,
+  NOT_A_PROJECT_FILE,
+  readProjectFile,
+} from './editor/project-file';
 import { embedProjectInPng } from './editor/png-project';
 import { ICON_LABELS, spatialModelKeys } from './components/spatial-icon';
 import { PaletteGlyph } from './components/PaletteGlyph';
@@ -1387,11 +1393,49 @@ export function App({
   );
   const warningCount = workspaceView.compiled.warnings.length;
 
+  // Dropping a `.c4.json` or a portable PNG anywhere on the window opens it — the same read the
+  // menu's file picker performs. Palette drags carry their own MIME type and never reach this.
+  const [fileOver, setFileOver] = useState(false);
+  const carriesFile = (event: DragEvent<HTMLElement>): boolean =>
+    event.dataTransfer.types.includes('Files');
+
   return (
     <div
       className={`app-shell${explorerOpen ? '' : ' app-shell--no-explorer'}${
         inspectorOpen ? '' : ' app-shell--no-inspector'
       }`}
+      onDragOver={(event) => {
+        if (!carriesFile(event)) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        setFileOver(true);
+      }}
+      onDragLeave={(event) => {
+        // Only the drag leaving the window counts; crossing between panels inside it does not.
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setFileOver(false);
+        }
+      }}
+      onDrop={(event) => {
+        if (!carriesFile(event)) {
+          return;
+        }
+        event.preventDefault();
+        setFileOver(false);
+        const file = event.dataTransfer.files[0];
+        if (file === undefined) {
+          return;
+        }
+        void readProjectFile(file).then((parsed) => {
+          if (parsed === undefined) {
+            window.alert(NOT_A_PROJECT_FILE);
+            return;
+          }
+          replaceProject(parsed);
+        });
+      }}
       style={
         {
           ...(explorerWidth === undefined
@@ -1663,6 +1707,12 @@ export function App({
           {layoutWorkerState === 'unavailable' ? <span>Layout worker unavailable</span> : null}
         </div>
       </footer>
+      {fileOver ? (
+        <div className="drop-veil" aria-hidden="true">
+          <p>Drop a project to open it</p>
+          <span>.c4.json or a portable project PNG</span>
+        </div>
+      ) : null}
     </div>
   );
 }

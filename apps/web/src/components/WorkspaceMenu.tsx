@@ -7,8 +7,7 @@ import {
   readConflictProject,
   readRemoteVersion,
 } from '../editor/persistence';
-import { extractProjectFromPng } from '../editor/png-project';
-import { downloadProjectFile, parseProjectFile } from '../editor/project-file';
+import { downloadProjectFile, NOT_A_PROJECT_FILE, readProjectFile } from '../editor/project-file';
 import type { SaveStatus } from '../editor/useAutosave';
 
 const STATUS_COPY: Readonly<Record<SaveStatus, string | undefined>> = {
@@ -83,16 +82,9 @@ export function WorkspaceMenu({
           if (file === undefined) {
             return;
           }
-          const read =
-            file.type === 'image/png' || file.name.endsWith('.png')
-              ? file.arrayBuffer().then((buffer) => {
-                  return extractProjectFromPng(new Uint8Array(buffer)) ?? '';
-                })
-              : file.text();
-          void read.then((text) => {
-            const parsed = parseProjectFile(text);
+          void readProjectFile(file).then((parsed) => {
             if (parsed === undefined) {
-              window.alert('That file is not a CD3 project — or the PNG was not exported by CD3.');
+              window.alert(NOT_A_PROJECT_FILE);
               return;
             }
             onReplaceProject(parsed);

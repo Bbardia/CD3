@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -463,5 +463,41 @@ describe.sequential('CD3 workspace shell', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
 
     expect(screen.getByTestId('2d-selection')).toHaveTextContent('none');
+  });
+
+  it('opens a project file dropped anywhere on the window', async () => {
+    renderApp();
+    const shell = document.querySelector('.app-shell');
+    if (!(shell instanceof HTMLElement)) {
+      throw new Error('The app shell was not rendered.');
+    }
+    const dropped = { ...project, name: 'Dropped stack' };
+    const dataTransfer = {
+      dropEffect: 'none',
+      files: [new File([JSON.stringify(dropped)], 'dropped.c4.json', { type: 'application/json' })],
+      types: ['Files'],
+    };
+
+    fireEvent.dragOver(shell, { dataTransfer });
+    expect(screen.getByText('Drop a project to open it')).toBeVisible();
+
+    fireEvent.drop(shell, { dataTransfer });
+
+    await waitFor(() => {
+      expect(screen.getByText('Dropped stack')).toBeVisible();
+    });
+    expect(screen.queryByText('Drop a project to open it')).toBeNull();
+  });
+
+  it('ignores a palette drag, which carries no file', () => {
+    renderApp();
+    const shell = document.querySelector('.app-shell');
+    if (!(shell instanceof HTMLElement)) {
+      throw new Error('The app shell was not rendered.');
+    }
+
+    fireEvent.dragOver(shell, { dataTransfer: { types: ['application/x-cd3-palette-entry'] } });
+
+    expect(screen.queryByText('Drop a project to open it')).toBeNull();
   });
 });
