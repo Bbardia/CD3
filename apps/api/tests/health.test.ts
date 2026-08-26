@@ -27,7 +27,7 @@ describe('GET /api/health', () => {
     const server = buildServer();
     servers.add(server);
 
-    for (const host of ['localhost', 'localhost:5173', '127.0.0.1:3100', '[::1]:3100']) {
+    for (const host of ['localhost', 'localhost:5173', '127.0.0.1:6985', '[::1]:6985']) {
       const response = await server.inject({
         method: 'GET',
         url: '/api/health',
@@ -53,17 +53,17 @@ describe('GET /api/health', () => {
     const rejected = await server.inject({
       method: 'POST',
       url: '/api/not-a-route',
-      headers: { host: '127.0.0.1:3100', origin: 'https://attacker.example' },
+      headers: { host: '127.0.0.1:6985', origin: 'https://attacker.example' },
     });
     const allowedBrowser = await server.inject({
       method: 'POST',
       url: '/api/not-a-route',
-      headers: { host: '127.0.0.1:3100', origin: 'http://localhost:5173' },
+      headers: { host: '127.0.0.1:6985', origin: 'http://localhost:5173' },
     });
     const allowedCli = await server.inject({
       method: 'POST',
       url: '/api/not-a-route',
-      headers: { host: '127.0.0.1:3100' },
+      headers: { host: '127.0.0.1:6985' },
     });
 
     expect(rejected.statusCode).toBe(403);
@@ -78,11 +78,11 @@ describe('a published instance (CD3_PUBLIC_ORIGIN)', () => {
   });
 
   it('answers to the published address and still refuses every other hostname', async () => {
-    process.env['CD3_PUBLIC_ORIGIN'] = 'http://cd3.lan:3100, 192.168.1.50:3100';
+    process.env['CD3_PUBLIC_ORIGIN'] = 'http://cd3.lan:6985, 192.168.1.50:6985';
     const server = buildServer();
     servers.add(server);
 
-    for (const host of ['cd3.lan:3100', 'CD3.LAN:3100', '192.168.1.50:3100', '127.0.0.1:3100']) {
+    for (const host of ['cd3.lan:6985', 'CD3.LAN:6985', '192.168.1.50:6985', '127.0.0.1:6985']) {
       const response = await server.inject({
         method: 'GET',
         url: '/api/health',

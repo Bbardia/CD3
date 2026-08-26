@@ -7,10 +7,10 @@
  *
  * Reads the resolved compose config from stdin (JSON — no YAML dependency needed), then creates
  * one software system, one container per service, relationships from depends_on, and a view that
- * shows them, all through the validated command API on 127.0.0.1:3100.
+ * shows them, all through the validated command API on 127.0.0.1:6985.
  */
 
-const API = process.env.CD3_API ?? 'http://127.0.0.1:3100';
+const API = process.env.CD3_API ?? 'http://127.0.0.1:6985';
 // Keep this in sync with the API's intentionally small atomic command-batch ceiling. Splitting an
 // import would leave a half-created architecture behind if a later batch failed.
 const MAX_ATOMIC_COMMANDS = 100;

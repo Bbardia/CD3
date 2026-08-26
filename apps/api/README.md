@@ -4,20 +4,20 @@ The Fastify loopback server behind the CD3 app — and its scripting surface. An
 machine (a terminal, CI, editor tooling) can read the project and apply the same validated domain
 commands the UI executes.
 
-Base URL: `http://127.0.0.1:3100` with `pnpm dev` or `pnpm start` (`PORT` in `apps/api/.env`
+Base URL: `http://127.0.0.1:6985` with `pnpm dev` or `pnpm start` (`PORT` in `apps/api/.env`
 overrides, see `.env.example`). The packaged desktop app runs its own copy on dedicated loopback
 port `43173`, which stops with the app. Only one packaged app instance runs at a time.
 
 | Variable            | Effect                                                               |
 | ------------------- | -------------------------------------------------------------------- |
-| `PORT`              | Listening port (default `3100`)                                      |
+| `PORT`              | Listening port (default `6985`)                                      |
 | `CD3_DATA_DIR`      | Where the snapshot and its history live (default `apps/api/data/`)   |
 | `CD3_PUBLIC_ORIGIN` | Addresses to answer to besides loopback — also binds beyond loopback |
 | `CD3_WEB_DIST`      | Built web app to serve; `pnpm start` points it at `apps/web/dist`    |
 
 Without `CD3_PUBLIC_ORIGIN` the server binds `127.0.0.1` and rejects any request whose `Host` is not
 a literal loopback authority, which is what stops a DNS-rebinding page from reaching it. Set it to
-the address people type (`http://cd3.lan:3100`, comma-separated for several, `*` for any) to publish
+the address people type (`http://cd3.lan:6985`, comma-separated for several, `*` for any) to publish
 the instance on `0.0.0.0`. Mutations must still be same-origin with the `Host` they were sent to, so
 only the scheme may differ behind a TLS proxy. A published instance is unauthenticated: everyone who
 reaches it shares one project.
@@ -36,11 +36,11 @@ reaches it shares one project.
 | `POST`   | `/api/commands`            | Apply validated domain commands                          |
 
 ```sh
-curl 127.0.0.1:3100/api/project             # the whole project, ETag = revision
-curl 127.0.0.1:3100/api/project/revision
-curl -X PUT 127.0.0.1:3100/api/project -d @my.c4.json -H 'content-type: application/json'
-curl -X PUT 127.0.0.1:3100/api/project -d @my.c4.json -H 'content-type: application/json' -H 'If-None-Match: *'
-curl 127.0.0.1:3100/api/project/history
+curl 127.0.0.1:6985/api/project             # the whole project, ETag = revision
+curl 127.0.0.1:6985/api/project/revision
+curl -X PUT 127.0.0.1:6985/api/project -d @my.c4.json -H 'content-type: application/json'
+curl -X PUT 127.0.0.1:6985/api/project -d @my.c4.json -H 'content-type: application/json' -H 'If-None-Match: *'
+curl 127.0.0.1:6985/api/project/history
 ```
 
 ## Commands
@@ -51,7 +51,7 @@ containment, one occurrence per view) hold no matter who is typing. On failure t
 the domain error code and the `failedAt` index, and nothing is persisted.
 
 ```sh
-curl -X POST 127.0.0.1:3100/api/commands -H 'content-type: application/json' -d '{
+curl -X POST 127.0.0.1:6985/api/commands -H 'content-type: application/json' -d '{
   "commands": [
     { "type": "create-element",
       "element": { "id": "search", "kind": "container", "parentId": "northstar-commerce",
