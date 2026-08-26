@@ -23,6 +23,10 @@ jobs:
             pattern: |
               apps/desktop/release/*.AppImage
               apps/desktop/release/*.deb
+          - os: windows-latest
+            name: Windows
+            script: 'dist:win'
+            pattern: apps/desktop/release/*.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:

@@ -29,6 +29,14 @@ linux:
   desktop:
     entry:
       Comment: Local-first C4 architecture editor with synchronized 2D and 3D views
+win:
+  # Unsigned build: SmartScreen shows "unknown publisher" — More info → Run anyway.
+  target:
+    - nsis
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 # Chromium locale packs are ~1MB each; the UI is English-only.
 electronLanguages: [en]
 npmRebuild: false
