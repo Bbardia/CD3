@@ -76,6 +76,21 @@ importers:
         specifier: workspace:*
         version: link:../../packages/fixtures
 
+  apps/cli:
+    devDependencies:
+      '@cd3/api':
+        specifier: workspace:*
+        version: link:../api
+      '@cd3/web':
+        specifier: workspace:*
+        version: link:../web
+      '@types/node':
+        specifier: ^22.19.15
+        version: 22.20.1
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+
   apps/desktop:
     devDependencies:
       '@cd3/api':

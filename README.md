@@ -20,10 +20,16 @@ Commerce** sample.
 
 ## Install
 
+**Any platform, one command.** With Node.js 22.12+:
+
+```sh
+npx @bbardia/cd3   # opens http://127.0.0.1:6985, projects save to ~/.cd3
+```
+
 **Any platform, from source.** Node.js 22.12+ and pnpm 11 (`corepack enable`), then:
 
 ```sh
-pnpm install && pnpm build && pnpm start   # http://127.0.0.1:3100
+pnpm install && pnpm build && pnpm start   # http://127.0.0.1:6985
 ```
 
 **Linux.** Download `CD3-<version>.AppImage` (`chmod +x`, then run) or `cd3_<version>_amd64.deb`
@@ -32,8 +38,11 @@ from [Releases](https://github.com/Bbardia/CD3/releases).
 **macOS.** Download `CD3-<version>-arm64.dmg` from the same place. The build is unsigned, so the
 first launch is right-click → Open. Projects live in `~/Library/Application Support/CD3`.
 
-Pushing a `v*` tag builds and attaches every package in CI; `pnpm dist:mac` and `pnpm dist:linux`
-build the same artifacts locally.
+**Windows.** Download `CD3 Setup <version>.exe` from the same place. The build is unsigned, so
+SmartScreen warns on first run: **More info → Run anyway**.
+
+Pushing a `v*` tag builds and attaches every package in CI; `pnpm dist:mac`, `pnpm dist:linux`, and
+`pnpm dist:win` build the same artifacts locally.
 
 ## Host it for a team
 
@@ -41,7 +50,7 @@ CD3 binds to loopback and answers only to loopback until you publish an address.
 people will type, and it serves the whole app — editor and API — from that one port:
 
 ```sh
-CD3_PUBLIC_ORIGIN=http://cd3.lan:3100 CD3_DATA_DIR=/var/lib/cd3 pnpm start
+CD3_PUBLIC_ORIGIN=http://cd3.lan:6985 CD3_DATA_DIR=/var/lib/cd3 pnpm start
 ```
 
 Several names are comma-separated, and `*` accepts any hostname when the address is not fixed. A
@@ -103,11 +112,11 @@ provides it).
 
 ```sh
 pnpm install
-pnpm dev     # web on http://127.0.0.1:5173, API on http://127.0.0.1:3100
+pnpm dev     # web on http://127.0.0.1:5173, API on http://127.0.0.1:6985
 pnpm check   # format, lint, typecheck, test, build, production smoke check
 ```
 
-`pnpm build && pnpm start` serves the whole app as one process on `127.0.0.1:3100`. With the API
+`pnpm build && pnpm start` serves the whole app as one process on `127.0.0.1:6985`. With the API
 stopped the editor still saves to the browser, and says so. After changing the domain schema,
 regenerate the committed JSON Schema with `pnpm generate:schema`. The app icon is rendered from
 [apps/web/public/favicon.svg](apps/web/public/favicon.svg) by `pnpm --filter @cd3/desktop icon`.

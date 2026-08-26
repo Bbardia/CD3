@@ -1,0 +1,42 @@
+{
+  "name": "@bbardia/cd3",
+  "version": "0.1.1",
+  "description": "A local-first C4 model-driven architecture editor with synchronized 2D and 3D views. Run `npx @bbardia/cd3` and start modelling.",
+  "keywords": [
+    "c4",
+    "c4-model",
+    "architecture",
+    "diagram",
+    "editor",
+    "local-first"
+  ],
+  "homepage": "https://github.com/Bbardia/CD3#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bbardia/CD3.git",
+    "directory": "apps/cli"
+  },
+  "type": "module",
+  "bin": {
+    "cd3": "dist/cd3.cjs"
+  },
+  "files": [
+    "dist",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@cd3/api": "workspace:*",
+    "@cd3/web": "workspace:*",
+    "@types/node": "^22.19.15",
+    "esbuild": "^0.28.2"
+  },
+  "license": "MIT",
+  "author": "Bardia Amiryavari <bardiaamiryavari@gmail.com>"
+}

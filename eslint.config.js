@@ -8,6 +8,8 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/release/**',
+      // The published npx package carries a copy of the built web app.
+      'apps/cli/web/**',
       '**/coverage/**',
       '**/node_modules/**',
       'playwright-report/**',
