@@ -2,8 +2,9 @@ import { existsSync } from 'node:fs';
 
 import fastifyStatic from '@fastify/static';
 import { applyCommands, DomainCommandError, type DomainCommand } from '@cd3/domain';
-import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import Fastify, { LogController, type FastifyInstance, type FastifyReply } from 'fastify';
 
+import { loggerOptions } from './logging.js';
 import {
   deleteSnapshot,
   listSnapshotVersions,
@@ -244,7 +245,10 @@ export function buildServer(): FastifyInstance {
     // A generated project of a few hundred elements serialises well under a megabyte, but the
     // default 1 MB body limit leaves no headroom for descriptions and properties.
     bodyLimit: 8 * 1024 * 1024,
-    logger: process.env.NODE_ENV !== 'test',
+    logger: loggerOptions(),
+    // The app polls the revision endpoint, so per-request logging is noise. Failures are logged
+    // by the onResponse hook below; handler errors keep fastify's stack-carrying error log.
+    logController: new LogController({ disableRequestLogging: true }),
   });
 
   // Binding to 127.0.0.1 alone does not stop DNS rebinding: an attacker-controlled hostname can
@@ -272,6 +276,23 @@ export function buildServer(): FastifyInstance {
       !(isLoopbackAuthority(authorityOf(origin)) && isLoopbackAuthority(request.headers.host))
     ) {
       return reply.code(403).send({ error: 'Cross-origin API mutations are not allowed.' });
+    }
+  });
+
+  // Routine traffic stays silent; a failed response is one readable line. Server faults are
+  // errors and refusals (403) are warnings, but ordinary client errors only appear under
+  // LOG_LEVEL=debug — a fresh instance answers 404 to every revision poll until the first save,
+  // and that expected state must not spam the log.
+  server.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode >= 400) {
+      const line = `${request.method} ${request.url} → ${String(reply.statusCode)}`;
+      if (reply.statusCode >= 500) {
+        request.log.error(line);
+      } else if (reply.statusCode === 403) {
+        request.log.warn(line);
+      } else {
+        request.log.debug(line);
+      }
     }
   });
 

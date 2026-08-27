@@ -14,6 +14,7 @@ port `43173`, which stops with the app. Only one packaged app instance runs at a
 | `CD3_DATA_DIR`      | Where the snapshot and its history live (default `apps/api/data/`)                                            |
 | `CD3_PUBLIC_ORIGIN` | Addresses to answer to besides loopback — also binds beyond loopback                                          |
 | `CD3_WEB_DIST`      | Built web app to serve; `pnpm start` points it at `apps/web/dist`                                             |
+| `LOG_LEVEL`         | Log verbosity (default `info`): startup, warnings, and failed requests; `debug` and up for more               |
 
 Without `CD3_PUBLIC_ORIGIN` the server binds `127.0.0.1` and rejects any request whose `Host` is not
 a literal loopback authority, which is what stops a DNS-rebinding page from reaching it. Set it to
