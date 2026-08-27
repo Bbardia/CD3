@@ -890,6 +890,39 @@ function PanelResizer({
   );
 }
 
+/**
+ * The address serving this instance, straight from the page's own location — the one address that
+ * is true in every distribution (dev server, npx, desktop, hosted). Click copies the full link.
+ */
+function InstanceAddress() {
+  const [copied, setCopied] = useState(false);
+  const host = window.location.host;
+  if (host === '') {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      className="instance-address"
+      title="This instance's address — click to copy the link"
+      onClick={() => {
+        const link = window.location.origin;
+        if (navigator.clipboard === undefined) {
+          // Plain-HTTP LAN addresses have no clipboard API; the prompt still hands over the link.
+          window.prompt('Copy the address', link);
+          return;
+        }
+        void navigator.clipboard.writeText(link).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      {copied ? 'Copied' : host}
+    </button>
+  );
+}
+
 export function App({
   initialProjectSource = 'disk',
 }: {
@@ -1465,6 +1498,7 @@ export function App({
           </div>
         </div>
         <div className="header-actions">
+          <InstanceAddress />
           <WorkspaceMenu
             project={project}
             status={saveStatus}

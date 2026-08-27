@@ -2170,3 +2170,20 @@ details[open] > .tree-group__heading .tree-group__caret {
 .welcome-actions .welcome-primary:hover {
   background: #2a53af;
 }
+
+.instance-address {
+  padding: 4px 8px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: copy;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.02em;
+}
+
+.instance-address:hover {
+  background: #e6ebe8;
+  color: var(--ink);
+}
