@@ -24,6 +24,7 @@ import type {
 
 import { Diagram2D } from './components/Diagram2D';
 import { ObjectPalette } from './components/ObjectPalette';
+import { WelcomeDialog } from './components/WelcomeDialog';
 import { WorkspaceMenu } from './components/WorkspaceMenu';
 import { StageQuickBar } from './components/StageQuickBar';
 import { CommandErrorBanner, EditorToolbar } from './components/EditorToolbar';
@@ -918,6 +919,8 @@ export function App({
   const [freshViewId, setFreshViewId] = useState<string | undefined>(undefined);
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  // Only a first run falls back to the sample, so only a first run gets the welcome choice.
+  const [welcomeOpen, setWelcomeOpen] = useState(initialProjectSource === 'sample');
   // undefined = the stylesheet default, so the responsive breakpoints stay in charge until a drag.
   const [explorerWidth, setExplorerWidth] = useState<number | undefined>(undefined);
   const [inspectorWidth, setInspectorWidth] = useState<number | undefined>(undefined);
@@ -1447,6 +1450,9 @@ export function App({
         } as CSSProperties
       }
     >
+      {welcomeOpen ? (
+        <WelcomeDialog onOpenProject={replaceProject} onDismiss={() => setWelcomeOpen(false)} />
+      ) : null}
       <header className="global-header">
         <div className="brand-lockup">
           <img className="brand-glyph" src="/favicon.svg" alt="" width={22} height={22} />
