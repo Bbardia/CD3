@@ -5,6 +5,11 @@
   "productName": "CD3",
   "description": "Double-clickable desktop shell around the CD3 local server.",
   "author": "CD3 maintainers <Bbardia@users.noreply.github.com>",
+  "homepage": "https://github.com/Bbardia/CD3",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bbardia/CD3.git"
+  },
   "main": "dist/main.cjs",
   "scripts": {
     "build": "node scripts/build.mjs",

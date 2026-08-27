@@ -29,6 +29,10 @@ linux:
   desktop:
     entry:
       Comment: Local-first C4 architecture editor with synchronized 2D and 3D views
+deb:
+  # fpm fails outright on the "/" the scoped package name would put in the deb path.
+  packageName: cd3
+  artifactName: cd3_${version}_${arch}.${ext}
 win:
   # Unsigned build: SmartScreen shows "unknown publisher" — More info → Run anyway.
   target:

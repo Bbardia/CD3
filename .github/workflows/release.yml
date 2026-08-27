@@ -41,6 +41,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Stamp the app version from the tag
+        # Windows runners default to PowerShell, which cannot expand ${VAR#v}.
+        shell: bash
         run: npm pkg set version="${GITHUB_REF_NAME#v}" --prefix apps/desktop
       - run: pnpm build
       - run: pnpm --filter @cd3/desktop ${{ matrix.script }}
@@ -76,7 +78,14 @@ jobs:
       - run: pnpm build
       # Trusted publishing needs a newer npm than the one bundled with Node 22.
       - run: npm install -g npm@latest
-      - run: npm publish --access public
+      # Idempotent so a re-pushed tag (say, after a packaging fix) does not fail on npm.
+      - run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [ "$(npm view "@bbardia/cd3@${version}" version 2>/dev/null)" = "${version}" ]; then
+            echo "@bbardia/cd3@${version} is already published; skipping."
+          else
+            npm publish --access public
+          fi
         working-directory: apps/cli
 
   release:
